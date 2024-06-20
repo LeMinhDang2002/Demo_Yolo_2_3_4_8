@@ -7,7 +7,7 @@
 1. Clone repo
 
     ```bash
-    git clone https://github.com/LeMinhDang2002/Demo_Yolo_2_4.git
+    git clone https://github.com/LeMinhDang2002/Demo_Yolo_2_3_4_8.git
     cd Demo_Yolo_2_4
     ```
 2. Create ENV
