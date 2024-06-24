@@ -315,11 +315,13 @@ def DisplayDemo(yolo, cnn, uploaded_files):
         labels = outputs['labels']
         bboxes = outputs['bboxes']
 
+        index = np.argmax(scores)
+
         bboxes = rescale_bboxes(bboxes, [orig_w, orig_h], ratio)
-        x = int((int(bboxes[0][0]) + int(bboxes[0][2]))/2)
-        y = int((int(bboxes[0][1]) + int(bboxes[0][3]))/2) 
-        w = int(bboxes[0][2] - bboxes[0][0]) * 1.2
-        h = int(bboxes[0][3] - bboxes[0][1]) * 1.1
+        x = int((int(bboxes[index][0]) + int(bboxes[index][2]))/2)
+        y = int((int(bboxes[index][1]) + int(bboxes[index][3]))/2) 
+        w = int(bboxes[index][2] - bboxes[index][0]) * 1.2
+        h = int(bboxes[index][3] - bboxes[index][1]) * 1.1
 
         # x_min = int(bboxes[0][0])
         # y_min = int(bboxes[0][1])

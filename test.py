@@ -1732,14 +1732,12 @@ with st.form("select_anchors"):
 if start:
     count = 0
     count_p = 0
-    score_iou = 0.0
-    score_giou = 0.0
-    score_diou = 0.0
     conf = 0.0
     mAP = 0.0
     with open(path_test + '\\label.txt', 'r') as file:
         total = len(file.readlines())
     if(select_model == 'Yolov2'):
+        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1759,9 +1757,9 @@ if start:
                         if name == item:
                             xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou += iou(xywh_true, xywh_pred)
-                            score_giou += giou(xywh_true, xywh_pred)
-                            score_diou += diou(xywh_true, xywh_pred)
+                            score_iou = iou(xywh_true, xywh_pred)
+                            if score_iou > 0:
+                                list_iou.append(score_iou)
                         if name == item and plate_number == plate:
                             count+=1
             except:
@@ -1814,27 +1812,7 @@ if start:
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
 
-        is_all_ones = np.all(np_list_recall == 1.0)
-        is_all_zero = np.all(np_list_recall == 0.0)
-        all_zero_or_one = np.all((np_list_recall == 0.0) | (np_list_recall == 1.0))
-        if all_zero_or_one:
-            AP = np.sum(np_list_precision)
-            AP = round(AP / len(list_recall), 2)  
-        else:
-            if is_all_ones:
-                AP = np.sum(np_list_precision)
-            elif is_all_zero:
-                AP = 0.0
-            else:
-                for i in range(1, len(list_recall)):
-                    AP += (np.abs(np_list_recall[i] - np_list_recall[i - 1]))*np_list_precision[i]
-            try:
-                if is_all_ones or is_all_zero:
-                    AP = round(AP / len(list_recall), 2)    
-                else:
-                    AP = round(AP, 2)
-            except:
-                pass
+        AP = round(np.average(np_list_precision), 2)
 
         end_time = time.time()
         interval = end_time - start_time
@@ -1842,6 +1820,7 @@ if start:
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
     if(select_model == 'Yolov3'):
+        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1861,9 +1840,9 @@ if start:
                         if name == item:
                             xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou += iou(xywh_true, xywh_pred)
-                            score_giou += giou(xywh_true, xywh_pred)
-                            score_diou += diou(xywh_true, xywh_pred)
+                            score_iou = iou(xywh_true, xywh_pred)
+                            if score_iou > 0:
+                                list_iou.append(score_iou)
                         if name == item and plate_number == plate:
                             count+=1
             except:
@@ -1915,29 +1894,7 @@ if start:
         list_recall = sorted(list_recall)
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
-        print(list_recall)
-        print(list_precision)
-        is_all_ones = np.all(np_list_recall == 1.0)
-        is_all_zero = np.all(np_list_recall == 0.0)
-        all_zero_or_one = np.all((np_list_recall == 0.0) | (np_list_recall == 1.0))
-        if all_zero_or_one:
-            AP = np.sum(np_list_precision)
-            AP = round(AP / len(list_recall), 2)  
-        else:
-            if is_all_ones:
-                AP = np.sum(np_list_precision)
-            elif is_all_zero:
-                AP = 0.0
-            else:
-                for i in range(1, len(list_recall)):
-                    AP += (np.abs(np_list_recall[i] - np_list_recall[i - 1]))*np_list_precision[i]
-            try:
-                if is_all_ones or is_all_zero:
-                    AP = round(AP / len(list_recall), 2)    
-                else:
-                    AP = round(AP, 2)
-            except:
-                pass
+        AP = round(np.average(np_list_precision), 2)
 
         end_time = time.time()
         interval = end_time - start_time
@@ -1945,6 +1902,7 @@ if start:
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
     if(select_model == 'Yolov4'):
+        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1964,9 +1922,9 @@ if start:
                         if name == item:
                             xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou += iou(xywh_true, xywh_pred)
-                            score_giou += giou(xywh_true, xywh_pred)
-                            score_diou += diou(xywh_true, xywh_pred)
+                            score_iou = iou(xywh_true, xywh_pred)
+                            if score_iou > 0:
+                                list_iou.append(score_iou)
                         if name == item and plate_number == plate:
                             print(name)
                             count+=1
@@ -2020,29 +1978,7 @@ if start:
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
 
-        print(list_recall)
-        print(list_precision)
-        is_all_ones = np.all(np_list_recall == 1.0)
-        is_all_zero = np.all(np_list_recall == 0.0)
-        all_zero_or_one = np.all((np_list_recall == 0.0) | (np_list_recall == 1.0))
-        if all_zero_or_one:
-            AP = np.sum(np_list_precision)
-            AP = round(AP / len(list_recall), 2)  
-        else:
-            if is_all_ones:
-                AP = np.sum(np_list_precision)
-            elif is_all_zero:
-                AP = 0.0
-            else:
-                for i in range(1, len(list_recall)):
-                    AP += (np.abs(np_list_recall[i] - np_list_recall[i - 1]))*np_list_precision[i]
-            try:
-                if is_all_ones or is_all_zero:
-                    AP = round(AP / len(list_recall), 2)    
-                else:
-                    AP = round(AP, 2)
-            except:
-                pass
+        AP = round(np.average(np_list_precision))
         end_time = time.time()
         interval = end_time - start_time
         hours = int(interval // 3600)
@@ -2050,6 +1986,7 @@ if start:
         seconds = int(interval % 60)
 
     if(select_model == 'Yolov8'):
+        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -2069,9 +2006,9 @@ if start:
                         if name == item:
                             xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou += iou(xywh_true, xywh_pred)
-                            score_giou += giou(xywh_true, xywh_pred)
-                            score_diou += diou(xywh_true, xywh_pred)
+                            score_iou = iou(xywh_true, xywh_pred)
+                            if score_iou > 0:
+                                list_iou.append(score_iou)
                         if name == item and plate_number == plate:
                             print(name)
                             count+=1
@@ -2125,29 +2062,7 @@ if start:
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
 
-        print(list_recall)
-        print(list_precision)
-        is_all_ones = np.all(np_list_recall == 1.0)
-        is_all_zero = np.all(np_list_recall == 0.0)
-        all_zero_or_one = np.all((np_list_recall == 0.0) | (np_list_recall == 1.0))
-        if all_zero_or_one:
-            AP = np.sum(np_list_precision)
-            AP = round(AP / len(list_recall), 2)  
-        else:
-            if is_all_ones:
-                AP = np.sum(np_list_precision)
-            elif is_all_zero:
-                AP = 0.0
-            else:
-                for i in range(1, len(list_recall)):
-                    AP += (np.abs(np_list_recall[i] - np_list_recall[i - 1]))*np_list_precision[i]
-            try:
-                if is_all_ones or is_all_zero:
-                    AP = round(AP / len(list_recall), 2)    
-                else:
-                    AP = round(AP, 2)
-            except:
-                pass
+        AP = round(np.average(list_precision), 2)
         end_time = time.time()
         interval = end_time - start_time
         hours = int(interval // 3600)
@@ -2156,9 +2071,7 @@ if start:
 
     result = round(count/total, 2)*100
     result_p = round(count_p/total, 2)*100
-    miou = round(score_iou / total, 2)
-    mgiou = round(score_giou / total, 2)
-    mdiou = round(score_diou / total, 2)
+    miou = round(np.average(list_iou), 2)
     conf = round(conf / total, 2) * 100
     s = f"<p style='font-size:40px;'>✅ mAP {AP}</p>"
     st.markdown(s, unsafe_allow_html=True) 
@@ -2184,67 +2097,3 @@ if start:
     st.markdown(styled_s + style, unsafe_allow_html=True)
     s = f"<p style='font-size:40px;'>✅ mIoU: {miou}</p>"
     st.markdown(s, unsafe_allow_html=True) 
-
-    # s = r"$$ \text{IoU\ loss} = -ln\frac{Intersection}{Union} $$"
-    # styled_s = f"""<span class="markdown-css">{s}</span>"""
-    # style = """
-    # <style>
-    #     .markdown-css {
-    #         font-size: 30px;
-    #         text-align: center;
-    #         display: block;
-    #     }
-    # </style>
-    # """
-    # st.markdown(styled_s + style, unsafe_allow_html=True)
-    # iou_loss = round(-math.log(miou), 2)
-    # s = f"<p style='font-size:40px;'>✅ IoU Loss: {iou_loss}</p>"
-    # st.markdown(s, unsafe_allow_html=True) 
-
-    # s = r"$$ GIoU = IoU - \frac{C - Union}{C} $$"
-    # styled_s = f"""<span class="markdown-css">{s}</span>"""
-    # style = """
-    # <style>
-    #     .markdown-css {
-    #         font-size: 30px;
-    #         text-align: center;
-    #         display: block;
-    #     }
-    # </style>
-    # """
-    # st.markdown(styled_s + style, unsafe_allow_html=True)
-    # s = f"<p style='font-size:30px;'>C: Phần diện tích bao quanh Box thực tế và Box dự đoán</p>"
-    # st.markdown(s, unsafe_allow_html=True) 
-    # s = f"<p style='font-size:40px;'>✅ mGIoU {mgiou}</p>"
-    # st.markdown(s, unsafe_allow_html=True)
-
-    # s = r"$$ DIoU = \frac{p^2(b,b^{gt})}{c^2} $$"
-    # styled_s = f"""<span class="markdown-css">{s}</span>"""
-    # style = """
-    # <style>
-    #     .markdown-css {
-    #         font-size: 30px;
-    #         text-align: center;
-    #         display: block;
-    #     }
-    # </style>
-    # """
-    # st.markdown(styled_s + style, unsafe_allow_html=True)
-
-    # s = f"<p style='font-size:30px;'>c: Khoảng cách giữa điểm trên phía trái và dưới phía phải của phần diện tích bao quanh Box thực tế và Box dự đoán</p>"
-    # st.markdown(s, unsafe_allow_html=True)
-
-    # s = r"$$ p(b,b^{gt}) $$"
-    # styled_s = f"""<span class="markdown_diou">{s}: khoảng cách giữa 2 tâm</span>"""
-    # style = """
-    # <style>
-    #     .markdown_diou {
-    #         font-size: 30px;
-    #     }
-    # </style>
-    # """
-    # st.markdown(styled_s + style, unsafe_allow_html=True)
-
-    # s = f"<p style='font-size:40px;'>✅ mDIoU {mdiou}</p>"
-    # st.markdown(s, unsafe_allow_html=True)
-    
