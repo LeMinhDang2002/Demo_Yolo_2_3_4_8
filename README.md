@@ -8,7 +8,7 @@
 
     ```bash
     git clone https://github.com/LeMinhDang2002/Demo_Yolo_2_3_4_8.git
-    cd Demo_Yolo_2_4
+    cd Demo_Yolo_2_3_4_8
     ```
 2. Create ENV
     ```bash
