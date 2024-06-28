@@ -18,4 +18,5 @@ Weights/yolov4_3_anchor.h5
 Weights/yolov4_iou_3_anchor.h5
 Weights/yolov4_mish_3_anchor.h5
 Weights/yolov8_n_last_mosaic_epoch.pth
+Weights/yolov8_s_last_mosaic_epoch.pth
 env

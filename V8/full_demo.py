@@ -146,10 +146,10 @@ class Args():
         self.show = False
         self.gif = False
         # Model setting
-        self.model = 'yolov8_n'
+        self.model = 'yolov8_s'
         self.num_classes = 1
-        self.weight = './Weights/yolov8_n_last_mosaic_epoch.pth'
-        self.conf_thresh = 0.35
+        self.weight = './Weights/yolov8_s_last_mosaic_epoch.pth'
+        self.conf_thresh = 0.05
         self.nms_thresh = 0.5
         self.topk = 100
         self.deploy = False
@@ -168,7 +168,7 @@ def Rerun(final_image, cnn, threshold = 170):
     #estimations of character contours sizes of cropped license plates
     dimensions = [LP_WIDTH/14,
                         LP_WIDTH/4,
-                        LP_HEIGHT/3,
+                        LP_HEIGHT/4,
                         LP_HEIGHT/2]
 
     # _, img_binary_lp = cv2.threshold(img_gray_lp, 140, 255, cv2.THRESH_BINARY)
@@ -252,6 +252,8 @@ def Rerun(final_image, cnn, threshold = 170):
         img_res = img_res_1
     elif (len(img_res_1) == 0 and len(img_res_2) != 0):
         img_res = img_res_2
+    else:
+        img_res = []
     for i in range(len(img_res)):
 
         # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
@@ -320,15 +322,16 @@ def DisplayDemo(yolo, cnn, uploaded_files):
         bboxes = rescale_bboxes(bboxes, [orig_w, orig_h], ratio)
         x = int((int(bboxes[index][0]) + int(bboxes[index][2]))/2)
         y = int((int(bboxes[index][1]) + int(bboxes[index][3]))/2) 
-        w = int(bboxes[index][2] - bboxes[index][0]) * 1.2
+        w = int(bboxes[index][2] - bboxes[index][0]) * 1.1
         h = int(bboxes[index][3] - bboxes[index][1]) * 1.1
 
-        # x_min = int(bboxes[0][0])
-        # y_min = int(bboxes[0][1])
-        # x_max = int(bboxes[0][2])
-        # y_max = int(bboxes[0][3])
         x_min, y_min = int(x - w / 2), int(y - h / 2)
         x_max, y_max = int(x + w / 2), int(y + h / 2)
+
+        if x_min < 0:
+            x_min = 1
+        if y_min < 0:
+            y_min = 1
 
         img_draw = Image.fromarray(img)
         draw = ImageDraw.Draw(img_draw)
@@ -339,57 +342,76 @@ def DisplayDemo(yolo, cnn, uploaded_files):
         st.image(img_draw, caption='Hình ảnh với hình vẽ', use_column_width=True)
 
         cropped_image = img[y_min:y_max, x_min:x_max]
-        cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+        if cropped_image.shape[0] <= 115:
+            cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+            st.image(cropped_image, caption="Hình ảnh sau khi resize về kích thước 115x100", use_column_width=True)
 
-        restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
+            restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
 
-        image_copy = restore_img.copy()
+            image_copy = restore_img.copy()
+            image_cut = restore_img.copy()
+            st.image(cropped_image, caption="Hình ảnh sau khi khôi phục", use_column_width=True)
+        else:
+            image_copy = cv2.resize(cropped_image, (690, 600), interpolation = cv2.INTER_AREA)
+            image_cut = image_copy.copy()
         
         # Convert image to grayscale
-        gray = cv2.cvtColor(restore_img,cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(image_copy,cv2.COLOR_BGR2GRAY)
         # Use canny edge detection
         edges = cv2.Canny(gray,100,200,apertureSize=3)
         lines = cv2.HoughLinesP(
                     edges, # Input edge image
-                    1, # Distance resolution in pixels
-                    # np.pi/180, # Angle resolution in radians
-                    np.pi/120, # Angle resolution in radians
-                    threshold=120, # Min number of votes for valid line
-                    minLineLength=250, # Min allowed length of line
-                    maxLineGap= 200 # Max allowed gap between line for joining them
+                    5, # Distance resolution in pixels
+                    np.pi/180, # Angle resolution in radians
+                    # np.pi/120, # Angle resolution in radians
+                    threshold=200, # Min number of votes for valid line
+                    minLineLength=360, # Min allowed length of line
+                    maxLineGap= 40 # Max allowed gap between line for joining them
                     )
-
+        angle_deg = 0
         for line in lines:
             x1, y1, x2, y2 = line[0]
             angle_rad = np.arctan2(y2 - y1, x2 - x1)
             angle_deg_check = np.degrees(angle_rad)
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            if y2 >= 0 and y2 < int(restore_img.shape[0]/2) and y1 >= 0 and y1 < int(restore_img.shape[0]/2) and np.abs(angle_deg_check) < 45:
-                cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
-            if y2 > int(restore_img.shape[0]/2) and y2 < int(restore_img.shape[0]) and y1 >  int(restore_img.shape[0]/2) and y1 < int(restore_img.shape[0]) and np.abs(angle_deg_check) < 45:
-                cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
+            # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            if angle_deg == 0:
+                if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60:
+                    # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                    angle_deg = np.degrees(angle_rad)
+                if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60:
+                    # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                    angle_deg = np.degrees(angle_rad)
+            else:
+                # if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                #     cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                #     angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                #     angle_deg = np.degrees(angle_rad)
+                if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                    # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                    angle_deg = np.degrees(angle_rad)
 
+        # st.image(image_cut, caption='Hình ảnh với hình vẽ', use_column_width=True)
         rotated_image = imutils.rotate(image_copy, angle_deg)
+        # st.image(rotated_image, caption='Hình ảnh với xoay', use_column_width=True)
 
         gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,200,apertureSize=3)
         lines = cv2.HoughLinesP(
-                            edges, # Input edge image
-                            1, # Distance resolution in pixels
-                            # np.pi/180, # Angle resolution in radians
-                            np.pi/120, # Angle resolution in radians
-                            # threshold=100, # Min number of votes for valid line
-                            threshold=100, # Min number of votes for valid line
-                            minLineLength=200, # Min allowed length of line
-                            maxLineGap= 300 # Max allowed gap between line for joining them
-                            )
+                    edges, # Input edge image
+                    5, # Distance resolution in pixels
+                    np.pi/180, # Angle resolution in radians
+                    # np.pi/120, # Angle resolution in radians
+                    threshold=200, # Min number of votes for valid line
+                    minLineLength=360, # Min allowed length of line
+                    maxLineGap= 50 # Max allowed gap between line for joining them
+                    )
+        angle_deg = 0
         distance_top = 600
         distance_bottom = 600
-        y_min, y_max = 0, rotated_image.shape[0]
+        y_min, y_max = 0, 0
         deg = 0
         # height_tmp = int(image.shape[1])
         for line in lines:
@@ -397,10 +419,15 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
             angle_rad = np.arctan2(y2 - y1, x2 - x1)
             angle_deg = np.degrees(angle_rad)
-            if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
-                # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                y_min = y2
-            if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max > y2 and y2 > rotated_image.shape[0]/2 + 50:
+            if y_min == 0:
+                if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
+                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                    y_min = y2
+            else:
+                if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min > y2:
+                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                    y_min = y2
+            if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max < y2 and y2 > rotated_image.shape[0]/2 + 50:
                 # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
                 y_max = y2
 
@@ -408,26 +435,27 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
             angle_rad = np.arctan2(y2 - y1, x2 - x1)
             angle_deg = np.degrees(angle_rad)
-            if are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                distance_bottom = 0
-                distance_top = 0
-                deg = 0
-            elif are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
-                # np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90)))
-                # print(rotated_image.shape[1])
+            if are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
                 if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
                     tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
                     if tmp <= distance_top :
+                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                         distance_top = tmp
                         deg = np.abs(angle_deg)
                 elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
                     tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
                     if tmp <= distance_bottom:
-                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        # print(x1, y1, x2, y2)
                         distance_bottom = tmp
                         deg = np.abs(angle_deg)
+
+            elif are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                distance_bottom = 0
+                distance_top = 0
+                deg = 0
+
+        if(y_max == 0):
+            y_max = rotated_image.shape[0]
 
         if(distance_top != 600):
             # print(y_min, y_max)
@@ -451,23 +479,21 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             warp_mat = cv2.getAffineTransform(srcTri, dstTri)
             warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
 
-
         if (distance_top == 600 and distance_bottom == 600):
             gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray,50,200,apertureSize=3)
             lines = cv2.HoughLinesP(
-                                edges, # Input edge image
-                                1, # Distance resolution in pixels
-                                # np.pi/180, # Angle resolution in radians
-                                np.pi/120, # Angle resolution in radians
-                                # threshold=100, # Min number of votes for valid line
-                                threshold=120, # Min number of votes for valid line
-                                minLineLength=250, # Min allowed length of line
-                                maxLineGap= 300 # Max allowed gap between line for joining them
-                                )
+                        edges, # Input edge image
+                        5, # Distance resolution in pixels
+                        np.pi/180, # Angle resolution in radians
+                        # threshold=100, # Min number of votes for valid line
+                        threshold=110, # Min number of votes for valid line
+                        minLineLength=300, # Min allowed length of line
+                        maxLineGap= 35 # Max allowed gap between line for joining them
+                        )
             distance_top = 0
             distance_bottom = 0
-            x_min, y_min, x_max, y_max = 0, 0, 0,0
+            x_min, y_min, x_max, y_max = 0, 0, rotated_image.shape[1],rotated_image[0]
             deg = 0
             # height_tmp = int(image.shape[1])
             for line in lines:
@@ -489,6 +515,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                 if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
                     # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
                     x_max = x1
+            # st.image(rotated_image, caption='Hình ảnh với xoay', use_column_width=True)
             cropped_image = rotated_image[y_min:y_max, x_min:x_max]
 
 
@@ -599,52 +626,168 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
             char_array = [str(item) for item in character]
             result_string = ''.join(char_array[:])
-            st.write(result_string)
+            if len(result_string) == 0:
+                s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+                st.markdown(s, unsafe_allow_html=True) 
+            elif len(result_string) > 0 and len(result_string) < 9:
+                try:
+                    img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    # st.image(img_binary_lp, caption='Hình ảnh nhị phân', use_column_width=True)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
+                            if(len(result_string) <8):
+                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                                st.markdown(s, unsafe_allow_html=True) 
+                            else:
+                                s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                                st.markdown(s, unsafe_allow_html=True) 
+                                df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                data_array = df.values
+                                for i in range(len(data_array)):
+                                    if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                        s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                        st.markdown(s, unsafe_allow_html=True)
+                                        break
+                        else:
+                            s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                            st.markdown(s, unsafe_allow_html=True) 
+                            df = pd.read_excel('./BANG_SO_XE.xlsx')
+                            data_array = df.values
+                            for i in range(len(data_array)):
+                                if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                    s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    break
+                    else:
+                        s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
+                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                        data_array = df.values
+                        for i in range(len(data_array)):
+                            if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                st.markdown(s, unsafe_allow_html=True)
+                                break
+                except:
+                    img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    if(len(result_string) <8):
+                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
+                    else:
+                        s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
 
+                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                        data_array = df.values
+                        for i in range(len(data_array)):
+                            if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                st.markdown(s, unsafe_allow_html=True)
+                                break
 
-            dataframe1 = pd.read_excel('./BANG_SO_XE.xlsx')
+            elif len(result_string) == 9:
+                s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                st.markdown(s, unsafe_allow_html=True) 
 
-            # Chuyển đổi DataFrame thành mảng Python
-            data_array = dataframe1.values
+                df = pd.read_excel('./BANG_SO_XE.xlsx')
+                data_array = df.values
+                for i in range(len(data_array)):
+                    if np.char.strip(data_array[i][1]) == result_string[:4]:
+                        s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                        st.markdown(s, unsafe_allow_html=True)
+                        break
+            else:
+                try:
+                    img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                            if(len(result_string) <8):
+                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                                st.markdown(s, unsafe_allow_html=True) 
+                            else:
+                                s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                                st.markdown(s, unsafe_allow_html=True) 
+                        else:
+                            s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                            st.markdown(s, unsafe_allow_html=True) 
 
-            # In ra mảng dữ liệu
-            for i in range(len(data_array)):
-                if data_array[i][1] == result_string:
-                    st.write(data_array[i][0])
-                    break
+                            df = pd.read_excel('./BANG_SO_XE.xlsx')
+                            data_array = df.values
+                            for i in range(len(data_array)):
+                                if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                    s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    break
+                    else:
+                        s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
+
+                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                        data_array = df.values
+                        for i in range(len(data_array)):
+                            if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                st.markdown(s, unsafe_allow_html=True)
+                                break
+                except:
+                    img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    if(len(result_string) <8):
+                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
+                    else:
+                        s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                        st.markdown(s, unsafe_allow_html=True) 
+
+                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                        data_array = df.values
+                        for i in range(len(data_array)):
+                            if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                st.markdown(s, unsafe_allow_html=True)
+                                break
         else:
+            # st.image(warp_dst, caption='Hình ảnh với hình vẽ', use_column_width=True)
             gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
-            edges = cv2.Canny(gray,50,200,apertureSize=3)
+            edges = cv2.Canny(gray,50,250,apertureSize=3)
             lines = cv2.HoughLinesP(
                         edges, # Input edge image
-                        1, # Distance resolution in pixels
-                        # np.pi/180, # Angle resolution in radians
-                        np.pi/120, # Angle resolution in radians
+                        5, # Distance resolution in pixels
+                        np.pi/180, # Angle resolution in radians
                         # threshold=100, # Min number of votes for valid line
-                        threshold=100, # Min number of votes for valid line
-                        minLineLength=100, # Min allowed length of line
-                        maxLineGap= 200 # Max allowed gap between line for joining them
+                        threshold=110, # Min number of votes for valid line
+                        minLineLength=300, # Min allowed length of line
+                        maxLineGap= 35 # Max allowed gap between line for joining them
                         )
             x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                # cv2.line(warp_dst, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
-                if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 10 and x2 > 10:
-                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                    if x_min != 0 and x1 < x_min:
-                        x_min = x1
-                    elif x_min == 0:
-                        x_min = x1
-                if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
-                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                    if x_max != warp_dst.shape[1] and x1 > x_max:
-                        x_max = x1
-                    elif x_max == warp_dst.shape[1]:
-                        x_max = x1
-            cropped_image = warp_dst[:, x_min:x_max]
+            try:
+                for line in lines:
+                    x1, y1, x2, y2 = line[0]
+                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                    angle_deg = np.degrees(angle_rad)
+                    if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 10 and x2 > 10:
+                        # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                        if x_min != 0 and x1 < x_min:
+                            x_min = int((x1 + x2)/2)
+                        elif x_min == 0:
+                            x_min = int((x1 + x2)/2)
+                    if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
+                        # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                        if x_max != warp_dst.shape[1] and x1 > x_max:
+                            x_max = int((x1 + x2)/2)
+                        elif x_max == warp_dst.shape[1]:
+                            x_max = int((x1 + x2)/2)
+            except:
+                pass
 
+            # st.image(warp_dst, caption='Hình ảnh với hình vẽ', use_column_width=True)
+            cropped_image = warp_dst[:, x_min:x_max]
 
             img_gray_lp = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
 
@@ -653,7 +796,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
             #estimations of character contours sizes of cropped license plates
             dimensions = [LP_WIDTH/14,
-                                LP_WIDTH/4,
+                                LP_WIDTH/3,
                                 LP_HEIGHT/3,
                                 LP_HEIGHT/2]
 
@@ -739,6 +882,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                 img_res = img_res_1
             elif (len(img_res_1) == 0 and len(img_res_2) != 0):
                 img_res = img_res_2
+            else: img_res = []
             for i in range(len(img_res)):
 
                 # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
@@ -765,10 +909,13 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             elif len(result_string) > 0 and len(result_string) < 9:
                 try:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    # st.image(img_binary_lp, caption='Hình ảnh nhị phân', use_column_width=True)
                     if len(result_string) >=0 and len(result_string) < 9:
                         img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
                         if len(result_string) >=0 and len(result_string) < 9:
                             img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
                             if(len(result_string) <8):
                                 s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
                                 st.markdown(s, unsafe_allow_html=True) 

@@ -3138,9 +3138,9 @@ class Args():
         self.show = False
         self.gif = False
         # Model setting
-        self.model = 'yolov8_n'
+        self.model = 'yolov8_s'
         self.num_classes = 1
-        self.weight = './Weights/yolov8_n_last_mosaic_epoch.pth'
+        self.weight = './Weights/yolov8_s_last_mosaic_epoch.pth'
         self.conf_thresh = 0.35
         self.nms_thresh = 0.5
         self.topk = 100
