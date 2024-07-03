@@ -50,6 +50,43 @@ def cal_iou_nms(xywh_true, xywh_pred):
     
     return iou_scores
 
+def cal_iou_v2(xywh_true, xywh_pred):
+    """Calculate IOU of two tensors.
+
+    Args:
+        xywh_true: A tensor or array-like of shape (..., 4).
+            (x, y) should be normalized by image size.
+        xywh_pred: A tensor or array-like of shape (..., 4).
+    Returns:
+        An iou_scores array.
+    """
+    xy_true = xywh_true[..., 0:2] # N*1*1*1*(S*S)*2
+    wh_true = xywh_true[..., 2:4]
+
+    xy_pred = xywh_pred[..., 0:2] # N*S*S*B*1*2
+    wh_pred = xywh_pred[..., 2:4]
+    
+    half_xy_true = wh_true / 2.
+    mins_true    = xy_true - half_xy_true
+    maxes_true   = xy_true + half_xy_true
+
+    half_xy_pred = wh_pred / 2.
+    mins_pred    = xy_pred - half_xy_pred
+    maxes_pred   = xy_pred + half_xy_pred       
+    
+    intersect_mins  = np.maximum(mins_pred,  mins_true)
+    intersect_maxes = np.minimum(maxes_pred, maxes_true)
+    intersect_wh    = np.maximum(intersect_maxes - intersect_mins, 0.)
+    intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1]
+    
+    true_areas = wh_true[..., 0] * wh_true[..., 1]
+    pred_areas = wh_pred[..., 0] * wh_pred[..., 1]
+
+    union_areas = pred_areas + true_areas - intersect_areas
+    iou_scores  = intersect_areas/(union_areas + epsilon)
+    
+    return iou_scores
+
 
 def nms(xywhcp, class_num=1, nms_threshold=0.5):
     """Non-Maximum Suppression.
@@ -95,6 +132,7 @@ def nms(xywhcp, class_num=1, nms_threshold=0.5):
         xywhcp_new.append(xywhcp_class)
     
     xywhcp_new = sorted(xywhcp_new, reverse=True, key=lambda x:x[0][5])
+    st.write(xywhcp_new)
     # xywhcp_new_list = xywhcp_new[0].tolist()
 
     # print(xywhcp_new[0])
@@ -353,458 +391,6 @@ def are_lines_perpendicular(angle_deg, threshold = 2):
         return True
     return False
 
-
-def RunDemo(yolo, cnn, uploaded_files, version = 2):
-    img, img_draw, cropped_image = None, None, None
-    try:
-        for uploaded_file in uploaded_files:
-
-            file_bytes = uploaded_file.read()
-            nparr = np.frombuffer(file_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-            image_real = img.copy()
-            # image_real = cv2.cvtColor(image_real, cv2.COLOR_BGR2RGB)  # Chuyển đổi từ BGR sang RGB
-
-            # Thay đổi kích thước hình ảnh
-            resized_image = cv2.resize(image_real, (416, 416), interpolation = cv2.INTER_AREA)
-            image_pil = resized_image
-            resized_image = resized_image.astype(float)  # Chuyển đổi kiểu dữ liệu thành số thực
-            resized_image /= 255  # Chuẩn hóa giá trị pixel về khoảng từ 0 đến 1
-
-            # Mở rộng kích thước của hình ảnh để tạo batch
-            image = np.expand_dims(resized_image, axis=0)
-
-            prediction = yolo.model.predict(image)
-            if version == 2:
-                xywhcp = decode(*prediction, class_num=num_classes, threshold=0.7, version=2)
-            else:
-                xywhcp = decode(prediction[2][0],prediction[1][0],prediction[0][0] , class_num=num_classes, threshold=0.5, version=2)
-
-            if len(xywhcp) > 0 and version == 2:
-                xywhcp = nms(xywhcp, num_classes, 0.7)
-            elif len(xywhcp) > 0 and version == 3:
-                xywhcp = soft_nms(xywhcp, num_classes, 0.5, version=version)
-            elif len(xywhcp) > 0 and version == 4:
-                xywhcp = soft_nms(xywhcp, num_classes, 0.75, version=version)
-
-            # Tạo hình vẽ từ hình ảnh gốc
-            img_draw = Image.fromarray(img)
-            draw = ImageDraw.Draw(img_draw)
-
-            if version == 4:
-                x = int(xywhcp[0][0] * img.shape[1])
-                y = int(xywhcp[0][1] * img.shape[0])
-                w = int(xywhcp[0][2] * img.shape[1]*1.4)
-                h = int(xywhcp[0][3] * img.shape[0]*1.2)
-            else:
-                x = int(xywhcp[0][0] * img.shape[1])
-                y = int(xywhcp[0][1] * img.shape[0])
-                w = int(xywhcp[0][2] * img.shape[1] * 1.3)
-                h = int(xywhcp[0][3] * img.shape[0] * 1.1)
-            class_i = int(xywhcp[0][5])
-
-            # Vẽ hình tròn
-            radius = 5
-            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill='red')
-
-            # Vẽ hình chữ nhật
-            x_min, y_min = int(x - w / 2), int(y - h / 2)
-            x_max, y_max = int(x + w / 2), int(y + h / 2)
-            draw.rectangle([x_min, y_min, x_max, y_max], outline='red')
-
-            cropped_image = img[y_min:y_max, x_min:x_max]
-            cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
-
-            restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
-
-            image_copy = restore_img.copy()
-            
-            # Convert image to grayscale
-            gray = cv2.cvtColor(restore_img,cv2.COLOR_BGR2GRAY)
-            # Use canny edge detection
-            edges = cv2.Canny(gray,100,200,apertureSize=3)
-            lines = cv2.HoughLinesP(
-                        edges, # Input edge image
-                        1, # Distance resolution in pixels
-                        # np.pi/180, # Angle resolution in radians
-                        np.pi/120, # Angle resolution in radians
-                        threshold=120, # Min number of votes for valid line
-                        minLineLength=250, # Min allowed length of line
-                        maxLineGap= 200 # Max allowed gap between line for joining them
-                        )
-
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg_check = np.degrees(angle_rad)
-                # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                if y2 >= 0 and y2 < int(restore_img.shape[0]/2) and y1 >= 0 and y1 < int(restore_img.shape[0]/2) and np.abs(angle_deg_check) < 45:
-                    # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                    angle_deg = np.degrees(angle_rad)
-                if y2 > int(restore_img.shape[0]/2) and y2 < int(restore_img.shape[0]) and y1 >  int(restore_img.shape[0]/2) and y1 < int(restore_img.shape[0]) and np.abs(angle_deg_check) < 45:
-                    # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                    angle_deg = np.degrees(angle_rad)
-
-            rotated_image = imutils.rotate(image_copy, angle_deg)
-
-            gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
-            edges = cv2.Canny(gray,50,200,apertureSize=3)
-            lines = cv2.HoughLinesP(
-                                edges, # Input edge image
-                                1, # Distance resolution in pixels
-                                # np.pi/180, # Angle resolution in radians
-                                np.pi/120, # Angle resolution in radians
-                                # threshold=100, # Min number of votes for valid line
-                                threshold=100, # Min number of votes for valid line
-                                minLineLength=200, # Min allowed length of line
-                                maxLineGap= 300 # Max allowed gap between line for joining them
-                                )
-            distance_top = 600
-            distance_bottom = 600
-            y_min, y_max = 0, rotated_image.shape[0]
-            deg = 0
-            # height_tmp = int(image.shape[1])
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
-                if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
-                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                    y_min = y2
-                if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max > y2 and y2 > rotated_image.shape[0]/2 + 50:
-                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                    y_max = y2
-
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
-                if are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    distance_bottom = 0
-                    distance_top = 0
-                    deg = 0
-                elif are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
-                    # np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90)))
-                    if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                        tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
-                        if tmp <= distance_top :
-                            distance_top = tmp
-                            deg = np.abs(angle_deg)
-                    elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                        tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
-                        if tmp <= distance_bottom:
-                            distance_bottom = tmp
-                            deg = np.abs(angle_deg)
-
-            if(distance_top != 600):
-                crop_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
-                src = crop_image.copy()
-                srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
-                dstTri = np.array( [[-distance_top, 0], [src.shape[1], 0 ], [0 , src.shape[0]]] ).astype(np.float32)
-                warp_mat = cv2.getAffineTransform(srcTri, dstTri)
-                warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
-
-            if(distance_bottom != 600):
-                crop_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
-                src = crop_image.copy()
-                srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
-                dstTri = np.array( [[0, 0], [src.shape[1], 0 ], [-distance_bottom , src.shape[0]]] ).astype(np.float32)
-                warp_mat = cv2.getAffineTransform(srcTri, dstTri)
-                warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
-
-
-            if (distance_top == 600 and distance_bottom == 600):
-                gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
-                edges = cv2.Canny(gray,50,200,apertureSize=3)
-                lines = cv2.HoughLinesP(
-                                    edges, # Input edge image
-                                    1, # Distance resolution in pixels
-                                    # np.pi/180, # Angle resolution in radians
-                                    np.pi/120, # Angle resolution in radians
-                                    # threshold=100, # Min number of votes for valid line
-                                    threshold=120, # Min number of votes for valid line
-                                    minLineLength=250, # Min allowed length of line
-                                    maxLineGap= 300 # Max allowed gap between line for joining them
-                                    )
-                distance_top = 0
-                distance_bottom = 0
-                x_min, y_min, x_max, y_max = 0, 0, 0,0
-                deg = 0
-                for line in lines:
-                    x1, y1, x2, y2 = line[0]
-                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                    if are_lines_parallel(angle_deg) and y1 < int(rotated_image.shape[0]/2):
-                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                        y_min = y1
-                    if are_lines_parallel(angle_deg) and y1 > int(rotated_image.shape[0]/2):
-                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                        y_max = y1
-                    if are_lines_perpendicular(angle_deg) and x1 < int(rotated_image.shape[1]/2):
-                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                        x_min = x1
-                    if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
-                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                        x_max = x1
-                final_image = rotated_image[y_min:y_max, x_min:x_max]
-
-
-                img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
-
-                LP_WIDTH = final_image.shape[1]
-                LP_HEIGHT = final_image.shape[0]
-                dimensions = [LP_WIDTH/14,
-                                    LP_WIDTH/4,
-                                    LP_HEIGHT/3,
-                                    LP_HEIGHT/2]
-
-                # img_gray_lp = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2GRAY)
-                st.image(img_gray_lp, caption='Gray Image.', use_column_width=True)
-                # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-                _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
-
-                cntrs, _ = cv2.findContours(img_binary_lp.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                #Approx dimensions of the contours
-                lower_width = dimensions[0]
-                upper_width = dimensions[1]
-                lower_height = dimensions[2]
-                upper_height = dimensions[3]
-
-                #Check largest 15 contours for license plate character respectively
-                cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
-
-                character = []
-                x_cntr_list_1 = []
-                x_cntr_list_2 = []
-                target_contours = []
-                img_res_1 = []
-                img_res_2 = []
-
-                rotate_locations = []
-
-                for cntr in cntrs :
-                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
-                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
-                    intX-=5
-                    intY-=5
-                    intWidth = int(intWidth*1.2)
-                    intHeight = int(intHeight*1.1)
-                    
-                    #checking the dimensions of the contour to filter out the characters by contour's size
-                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY < LP_HEIGHT/3 :
-                        x_cntr_list_1.append(intX) 
-                        char_copy = np.zeros((44,24))
-                        #extracting each character using the enclosing rectangle's coordinates.
-                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
-                        char = cv2.resize(char, (75, 100))
-                        img_res_1.append(char) # List that stores the character's binary image (unsorted)
-
-                for cntr in cntrs :
-                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
-                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
-                    intX-=5
-                    intY-=5
-                    intWidth = int(intWidth*1.2)
-                    intHeight = int(intHeight*1.1)
-                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY > LP_HEIGHT/3 :
-                        # print(intX, intY, intWidth, intHeight)
-                        rotate_locations.append([intX, intY])
-                        x_cntr_list_2.append(intX) 
-                        char_copy = np.zeros((44,24))
-                        #extracting each character using the enclosing rectangle's coordinates.
-                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
-                        char = cv2.resize(char, (75, 100))
-                        img_res_2.append(char) # List that stores the character's binary image (unsorted)
-            
-                #arbitrary function that stores sorted list of character indeces
-                indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
-                img_res_copy = []
-                for idx in indices:
-                    img_res_copy.append(img_res_1[idx])# stores character images according to their index
-                img_res_1 = np.array(img_res_copy)
-
-                #arbitrary function that stores sorted list of character indeces
-                indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
-                img_res_copy = []
-                for idx in indices:
-                    img_res_copy.append(img_res_2[idx])# stores character images according to their index
-                img_res_2 = np.array(img_res_copy)
-
-                if(len(img_res_1) != 0 and len(img_res_2) != 0):
-                    img_res = np.concatenate((img_res_1, img_res_2), axis=0)
-                elif (len(img_res_1) != 0 and len(img_res_2) == 0):
-                    img_res = img_res_1
-                elif (len(img_res_1) == 0 and len(img_res_2) != 0):
-                    img_res = img_res_2
-                for i in range(len(img_res)):
-
-                    # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
-                    normalized_image = cv2.normalize(img_res[i], None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-
-                    resized_finalimage = cv2.resize(normalized_image, (75, 100))
-
-                    resized_finalimage = np.expand_dims(resized_finalimage, axis=0)
-                    predicts = cnn.predict(resized_finalimage)
-                    predicted_class = np.argmax(predicts, axis=1)
-
-                    if (predicted_class[0]) >= 10:
-                        character.append(chr((predicted_class[0] - 10) + ord('A')))
-                    else:
-                        character.append(predicted_class[0])
-
-                char_array = [str(item) for item in character]
-                result_string = ''.join(char_array[:])
-            else:
-                gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
-                edges = cv2.Canny(gray,50,200,apertureSize=3)
-                lines = cv2.HoughLinesP(
-                            edges, # Input edge image
-                            1, # Distance resolution in pixels
-                            # np.pi/180, # Angle resolution in radians
-                            np.pi/120, # Angle resolution in radians
-                            # threshold=100, # Min number of votes for valid line
-                            threshold=100, # Min number of votes for valid line
-                            minLineLength=100, # Min allowed length of line
-                            maxLineGap= 200 # Max allowed gap between line for joining them
-                            )
-                x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
-                for line in lines:
-                    x1, y1, x2, y2 = line[0]
-                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                    angle_deg = np.degrees(angle_rad)
-                    if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 10 and x2 > 10:
-                        # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                        if x_min != 0 and x1 < x_min:
-                            x_min = x1
-                        elif x_min == 0:
-                            x_min = x1
-                    if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
-                        # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                        if x_max != warp_dst.shape[1] and x1 > x_max:
-                            x_max = x1
-                        elif x_max == warp_dst.shape[1]:
-                            x_max = x1
-                final_image = warp_dst[:, x_min:x_max]
-
-
-                img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
-
-                LP_WIDTH = final_image.shape[1]
-                LP_HEIGHT = final_image.shape[0]
-
-                #estimations of character contours sizes of cropped license plates
-                dimensions = [LP_WIDTH/14,
-                                    LP_WIDTH/4,
-                                    LP_HEIGHT/3,
-                                    LP_HEIGHT/2]
-
-                _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
-                # _, img_binary_lp = cv2.threshold(img_gray_lp, 150, 255, cv2.THRESH_BINARY)
-
-                cntrs, _ = cv2.findContours(img_binary_lp.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                #Approx dimensions of the contours
-                lower_width = dimensions[0]
-                upper_width = dimensions[1]
-                lower_height = dimensions[2]
-                upper_height = dimensions[3]
-
-                #Check largest 15 contours for license plate character respectively
-                cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
-
-
-                character = []
-                x_cntr_list_1 = []
-                x_cntr_list_2 = []
-                target_contours = []
-                img_res_1 = []
-                img_res_2 = []
-
-                rotate_locations = []
-
-                for cntr in cntrs :
-                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
-                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
-                    intX-=5
-                    intY-=5
-                    intWidth = int(intWidth*1.2)
-                    intHeight = int(intHeight*1.1)
-                    
-                    #checking the dimensions of the contour to filter out the characters by contour's size
-                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY < LP_HEIGHT/3  and intX > 0 and intY > 0:
-                        x_cntr_list_1.append(intX) 
-                        char_copy = np.zeros((44,24))
-                        #extracting each character using the enclosing rectangle's coordinates.
-                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
-                        char = cv2.resize(char, (75, 100))
-                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
-                        img_res_1.append(char) # List that stores the character's binary image (unsorted)
-
-                for cntr in cntrs :
-                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
-                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
-                    intX-=5
-                    intY-=5
-                    intWidth = int(intWidth*1.2)
-                    intHeight = int(intHeight*1.1)
-                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY > LP_HEIGHT/3 and intX>0 and intY > 0:
-                        # print(intX, intY, intWidth, intHeight)
-                        rotate_locations.append([intX, intY])
-                        x_cntr_list_2.append(intX) 
-                        char_copy = np.zeros((44,24))
-                        #extracting each character using the enclosing rectangle's coordinates.
-                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
-                        char = cv2.resize(char, (75, 100))
-                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
-                        img_res_2.append(char) # List that stores the character's binary image (unsorted)
-            
-                #arbitrary function that stores sorted list of character indeces
-                indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
-                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
-                img_res_copy = []
-                for idx in indices:
-                    img_res_copy.append(img_res_1[idx])# stores character images according to their index
-                img_res_1 = np.array(img_res_copy)
-
-                #arbitrary function that stores sorted list of character indeces
-                indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
-                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
-                img_res_copy = []
-                for idx in indices:
-                    img_res_copy.append(img_res_2[idx])# stores character images according to their index
-                img_res_2 = np.array(img_res_copy)
-
-                if(len(img_res_1) != 0 and len(img_res_2) != 0):
-                    img_res = np.concatenate((img_res_1, img_res_2), axis=0)
-                elif (len(img_res_1) != 0 and len(img_res_2) == 0):
-                    img_res = img_res_1
-                elif (len(img_res_1) == 0 and len(img_res_2) != 0):
-                    img_res = img_res_2
-                for i in range(len(img_res)):
-
-                    # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
-                    normalized_image = cv2.normalize(img_res[i], None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-
-                    resized_finalimage = cv2.resize(normalized_image, (75, 100))
-
-                    resized_finalimage = np.expand_dims(resized_finalimage, axis=0)
-                    predicts = cnn.predict(resized_finalimage)
-                    predicted_class = np.argmax(predicts, axis=1)
-                    print(predicted_class[0])
-
-                    if (predicted_class[0]) >= 10:
-                        character.append(chr((predicted_class[0] - 10) + ord('A')))
-                    else:
-                        character.append(predicted_class[0])
-
-                char_array = [str(item) for item in character]
-                result_string = ''.join(char_array[:])
-    except Exception:
-        pass
-
-    return img, img_draw, cropped_image, restore_img, warp_dst, final_image, img_binary_lp, result_string
-
 def Rerun(final_image, cnn, threshold = 170):
     img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
 
@@ -898,6 +484,8 @@ def Rerun(final_image, cnn, threshold = 170):
         img_res = img_res_1
     elif (len(img_res_1) == 0 and len(img_res_2) != 0):
         img_res = img_res_2
+    else:
+        img_res = []
     for i in range(len(img_res)):
 
         # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
@@ -920,8 +508,685 @@ def Rerun(final_image, cnn, threshold = 170):
 
     return img_binary_lp, result_string
 
+def RunDemo(yolo, cnn, uploaded_files, version = 2):
+    img, img_draw, cropped_image = None, None, None
+    try:
+        for uploaded_file in uploaded_files:
+
+            file_bytes = uploaded_file.read()
+            nparr = np.frombuffer(file_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+            image_real = img.copy()
+            # image_real = cv2.cvtColor(image_real, cv2.COLOR_BGR2RGB)  # Chuyển đổi từ BGR sang RGB
+
+            # Thay đổi kích thước hình ảnh
+            resized_image = cv2.resize(image_real, (416, 416), interpolation = cv2.INTER_AREA)
+            image_pil = resized_image
+            resized_image = resized_image.astype(float)  # Chuyển đổi kiểu dữ liệu thành số thực
+            resized_image /= 255  # Chuẩn hóa giá trị pixel về khoảng từ 0 đến 1
+
+            # Mở rộng kích thước của hình ảnh để tạo batch
+            image = np.expand_dims(resized_image, axis=0)
+
+            prediction = yolo.model.predict(image)
+
+            if version == 2:
+                xywhcp = decode(*prediction, class_num=num_classes, threshold=0.7, version=2)
+            else:
+                xywhcp = decode(prediction[2][0],prediction[1][0],prediction[0][0] , class_num=num_classes, threshold=0.5, version=2)
+
+            # xywhcp = nms(xywhcp, num_classes, 0.7)
+            # print(xywhcp)
+            if len(xywhcp) > 0 and version == 2:
+                xywhcp = nms(xywhcp, num_classes, 0.7)
+            elif len(xywhcp) > 0 and version == 3:
+                xywhcp = soft_nms(xywhcp, num_classes, 0.5, version=version)
+            elif len(xywhcp) > 0 and version == 4:
+                xywhcp = soft_nms(xywhcp, num_classes, 0.75, version=version)
+
+            # Tạo hình vẽ từ hình ảnh gốc
+            img_draw = Image.fromarray(img)
+            draw = ImageDraw.Draw(img_draw)
+
+            if version == 4:
+                x = int(xywhcp[0][0] * img.shape[1])
+                y = int(xywhcp[0][1] * img.shape[0])
+                w = int(xywhcp[0][2] * img.shape[1]*1.5)
+                h = int(xywhcp[0][3] * img.shape[0]*1.2)
+            else:
+                x = int(xywhcp[0][0] * img.shape[1])
+                y = int(xywhcp[0][1] * img.shape[0])
+                w = int(xywhcp[0][2] * img.shape[1] * 1.3)
+                h = int(xywhcp[0][3] * img.shape[0] * 1.1)
+            class_i = int(xywhcp[0][5])
+
+            radius = 5
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill='red')
+
+            # Vẽ hình chữ nhật
+            x_min, y_min = int(x - w / 2), int(y - h / 2)
+            x_max, y_max = int(x + w / 2), int(y + h / 2)
+            if x_min < 0:
+                x_min = 0
+            if y_min < 0:
+                y_min = 0
+            draw.rectangle([x_min, y_min, x_max, y_max], outline='red')
+
+            # Hiển thị hình ảnh với hình vẽ
+            # st.image(img_draw, caption='Hình ảnh với hình vẽ', use_column_width=True)
+
+            cropped_image = img[y_min:y_max, x_min:x_max]
+            if cropped_image.shape[0] >= 100:
+                image_copy = cv2.resize(cropped_image, (690, 600), interpolation = cv2.INTER_AREA)
+                image_cut = image_copy.copy()
+            else:
+                cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+                restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
+                image_copy = restore_img.copy()
+                image_cut = image_copy.copy()
+            
+            # Convert image to grayscale
+            gray = cv2.cvtColor(image_copy,cv2.COLOR_BGR2GRAY)
+            # Use canny edge detection
+            edges = cv2.Canny(gray,100,200,apertureSize=3)
+            thresholds = [200, 220, 100, 50]
+            rhos = [5,2]
+            angle_deg = 0
+            lineGaps = [40, ]
+            for lineGap in lineGaps:
+                for rho in rhos:
+                    for threshold in thresholds:
+                        lines = cv2.HoughLinesP(
+                                    edges, 
+                                    rho, 
+                                    np.pi/180,
+                                    threshold=threshold, 
+                                    minLineLength=360, 
+                                    maxLineGap= lineGap
+                                    )
+                        try:
+                            for line in lines:
+                                x1, y1, x2, y2 = line[0]
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg_check = np.degrees(angle_rad)
+                                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                if angle_deg == 0:
+                                    if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60:
+                                        # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                        angle_deg = np.degrees(angle_rad)
+                                    if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60:
+                                        # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                        angle_deg = np.degrees(angle_rad)
+                                else:
+                                    # if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                                    #     cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                    #     angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                    #     angle_deg = np.degrees(angle_rad)
+                                    if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 > int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                                        # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                        angle_deg = np.degrees(angle_rad)
+                        except:
+                            pass
+            # st.image(image_cut, caption='Hình ảnh với hình vẽ cắt', use_column_width=True)
+            rotated_image = imutils.rotate(image_copy, angle_deg)
+        
+            thresholds = [135, 100, 80, 150, 50]
+            rhos = [1, 2, 3]
+            lineGaps = [35, 50]
+            y_min, y_max = 0, 0
+            for lineGap in lineGaps:
+                for rho in rhos:
+                    for threshold in thresholds:
+                        gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
+                        edges = cv2.Canny(gray,50,200,apertureSize=3)
+                        lines = cv2.HoughLinesP(
+                                            edges, 
+                                            rho, 
+                                            # np.pi/180, 
+                                            np.pi/120, 
+                                            threshold=threshold,
+                                            minLineLength=300, 
+                                            maxLineGap= lineGap
+                                            )
+                        
+                        distance_top = 600
+                        distance_bottom = 600
+                        # y_min, y_max = 0, 0
+                        angle_deg = 0
+                        deg = 0
+                        # height_tmp = int(image.shape[1])
+                        try:
+                            for line in lines:
+                                x1, y1, x2, y2 = line[0]
+                                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                                if y_min == 0:
+                                    if y2 < int(rotated_image.shape[0]/2) - int(rotated_image.shape[0]/6) and y1 < int(rotated_image.shape[0]/2) - int(rotated_image.shape[0]/6) and are_lines_parallel(angle_deg, threshold=5) and y_min < y2 and y2 > 10:
+                                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                                        y_min = y2
+                                else:
+                                    if y2 < int(rotated_image.shape[0]/2) - 10 and y1 < int(rotated_image.shape[0]/2) - 10 and are_lines_parallel(angle_deg, threshold=5) and y_min > y2 and y2 > 10:
+                                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                                        y_min = y2
+                                if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=5) and y_max < y2 and y2 > rotated_image.shape[0]/2 + 50 and y2 < rotated_image.shape[0] - 20:
+                                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                                    y_max = y2
+
+                                # if x1 < int(rotated_image.shape[1]/2) and x2 < int(rotated_image.shape[1]/2):
+                                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                                if are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
+                                    if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                                        if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/6) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/6):
+                                            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                            tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
+                                            if tmp <= distance_top :
+                                                distance_top = tmp
+                                                deg = np.abs(angle_deg)
+                                    elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                                        if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/6) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/6):
+                                            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 200, 0), 2)
+                                            tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
+                                            if tmp <= distance_bottom:
+                                                distance_bottom = tmp
+                                                deg = np.abs(angle_deg)
+                                
+                                elif are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                                    if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/3) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/3):
+                                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                        distance_bottom = 0
+                                        distance_top = 0
+                                        deg = 0
+
+                        except:
+                            pass 
+                        # if(y_max == 0):
+                        #     y_max = rotated_image.shape[0]
+
+
+                        if y_min != 0 and y_max != 0 and distance_bottom != 600:
+                            # st.write('đủ điều kiện ' + str(threshold))
+                            break
+                        if y_min != 0 and y_max != 0 and distance_top != 600:
+                            # st.write('đủ điều kiện ' + str(threshold))
+                            break
+                    if y_min != 0 and y_max != 0 and distance_bottom != 600 and distance_top != 600:
+                        # st.write('đủ điều kiện ' + str(threshold))
+                        break
+                if y_min != 0 and y_max != 0 and distance_bottom != 600:
+                    # st.write('đủ điều kiện ' + str(threshold))
+                    break
+                if y_min != 0 and y_max != 0 and distance_top != 600:
+                    # st.write('đủ điều kiện ' + str(threshold))
+                    break
+
+            if(y_max == 0 and y_min ==0):
+                y_min = 0
+                y_max = rotated_image.shape[0]
+            if y_max == 0:
+                y_max = rotated_image.shape[0]
+
+            if(distance_top != 600):
+                # print(y_min, y_max)
+                cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+                # src = rotated_image.copy()
+                src = cropped_image.copy()
+                srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+                # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
+                dstTri = np.array( [[-distance_top, 0], [src.shape[1], 0 ], [0 , src.shape[0]]] ).astype(np.float32)
+                warp_mat = cv2.getAffineTransform(srcTri, dstTri)
+                warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
+
+            if(distance_bottom != 600):
+                # print(y_min, y_max)
+                cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+                # src = rotated_image.copy()
+                src = cropped_image.copy()
+                srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+                # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
+                dstTri = np.array( [[0, 0], [src.shape[1], 0 ], [-distance_bottom , src.shape[0]]] ).astype(np.float32)
+                warp_mat = cv2.getAffineTransform(srcTri, dstTri)
+                warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
+            
+            if (distance_top == 600 and distance_bottom == 600):
+                gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
+                edges = cv2.Canny(gray,50,200,apertureSize=3)
+                thresholds = [135, 100, 80, 150, 50]
+                for threshold in thresholds:
+                    lines = cv2.HoughLinesP(
+                                    edges, 
+                                    1, 
+                                    # np.pi/180, 
+                                    np.pi/120, 
+                                    threshold=threshold,
+                                    minLineLength=200, 
+                                    maxLineGap=100
+                                    )
+                    x_min, x_max = 0, rotated_image.shape[1]
+                    flag_left, flag_right = False, False
+                    deg = 0
+                    # height_tmp = int(image.shape[1])
+                    for line in lines:
+                        x1, y1, x2, y2 = line[0]
+                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                        angle_deg = np.degrees(angle_rad)
+
+
+                        # if are_lines_parallel(angle_deg) and y1 < int(rotated_image.shape[0]/2):
+                        #     # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                        #     y_min = y1
+                        # if are_lines_parallel(angle_deg) and y1 > int(rotated_image.shape[0]/2):
+                        #     # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 255), 2)
+                        #     y_max = y1
+                        if are_lines_perpendicular(angle_deg) and x1 < int(rotated_image.shape[1]/2):
+                            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                            flag_left = True
+                            x_min = int((x1 + x2)/2)
+                        if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
+                            # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                            flag_right = True
+                            x_max = int((x1 + x2)/2)
+
+                    if flag_left and flag_right:
+                            break
+                final_image = rotated_image[y_min:y_max, x_min:x_max]
+
+
+                img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
+
+                LP_WIDTH = final_image.shape[1]
+                LP_HEIGHT = final_image.shape[0]
+                dimensions = [LP_WIDTH/14,
+                                    LP_WIDTH/4,
+                                    LP_HEIGHT/4,
+                                    LP_HEIGHT/2]
+                # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+                _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
+
+                cntrs, _ = cv2.findContours(img_binary_lp.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                #Approx dimensions of the contours
+                lower_width = dimensions[0]
+                upper_width = dimensions[1]
+                lower_height = dimensions[2]
+                upper_height = dimensions[3]
+
+                #Check largest 15 contours for license plate character respectively
+                cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
+
+
+                character = []
+                x_cntr_list_1 = []
+                x_cntr_list_2 = []
+                target_contours = []
+                img_res_1 = []
+                img_res_2 = []
+
+                rotate_locations = []
+
+                for cntr in cntrs :
+                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
+                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
+                    intX-=5
+                    intY-=5
+                    intWidth = int(intWidth*1.2)
+                    intHeight = int(intHeight*1.1)
+                    
+                    #checking the dimensions of the contour to filter out the characters by contour's size
+                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY < LP_HEIGHT/3 :
+                        x_cntr_list_1.append(intX) 
+                        char_copy = np.zeros((44,24))
+                        #extracting each character using the enclosing rectangle's coordinates.
+                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
+                        char = cv2.resize(char, (75, 100))
+                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
+                        img_res_1.append(char) # List that stores the character's binary image (unsorted)
+
+                for cntr in cntrs :
+                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
+                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
+                    intX-=5
+                    intY-=5
+                    intWidth = int(intWidth*1.2)
+                    intHeight = int(intHeight*1.1)
+                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY > LP_HEIGHT/3 :
+                        # print(intX, intY, intWidth, intHeight)
+                        rotate_locations.append([intX, intY])
+                        x_cntr_list_2.append(intX) 
+                        char_copy = np.zeros((44,24))
+                        #extracting each character using the enclosing rectangle's coordinates.
+                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
+                        char = cv2.resize(char, (75, 100))
+                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
+                        img_res_2.append(char) # List that stores the character's binary image (unsorted)
+            
+                #arbitrary function that stores sorted list of character indeces
+                indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
+                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
+                img_res_copy = []
+                for idx in indices:
+                    img_res_copy.append(img_res_1[idx])# stores character images according to their index
+                img_res_1 = np.array(img_res_copy)
+
+                #arbitrary function that stores sorted list of character indeces
+                indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
+                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
+                img_res_copy = []
+                for idx in indices:
+                    img_res_copy.append(img_res_2[idx])# stores character images according to their index
+                img_res_2 = np.array(img_res_copy)
+
+                if(len(img_res_1) != 0 and len(img_res_2) != 0):
+                    img_res = np.concatenate((img_res_1, img_res_2), axis=0)
+                elif (len(img_res_1) != 0 and len(img_res_2) == 0):
+                    img_res = img_res_1
+                elif (len(img_res_1) == 0 and len(img_res_2) != 0):
+                    img_res = img_res_2
+                else:
+                    img_res = []
+                for i in range(len(img_res)):
+
+                    # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
+                    normalized_image = cv2.normalize(img_res[i], None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+
+                    resized_finalimage = cv2.resize(normalized_image, (75, 100))
+
+                    resized_finalimage = np.expand_dims(resized_finalimage, axis=0)
+                    predicts = cnn.predict(resized_finalimage)
+                    predicted_class = np.argmax(predicts, axis=1)
+
+                    if (predicted_class[0]) >= 10:
+                        character.append(chr((predicted_class[0] - 10) + ord('A')))
+                    else:
+                        character.append(predicted_class[0])
+
+                char_array = [str(item) for item in character]
+                result_string = ''.join(char_array[:])
+                list_result = []
+                list_result.append(result_string)
+                # if len(result_string) == 0:
+                #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+                #     st.markdown(s, unsafe_allow_html=True) 
+                if len(result_string) >= 0 and len(result_string) < 9:
+                    try:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                            list_result.append(result_string)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                                list_result.append(result_string)
+                                if len(result_string) >=0 and len(result_string) < 9:
+                                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                                    list_result.append(result_string)
+                                else:
+                                    pass
+                            else:
+                                pass
+                        else:
+                            pass
+                    except:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+
+                elif len(result_string) == 9:
+                    pass
+                else:
+                    try:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                            list_result.append(result_string)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                                list_result.append(result_string)
+                                if len(result_string) >=0 and len(result_string) < 9:
+                                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                                    list_result.append(result_string)
+                                else:
+                                    pass
+                            else:
+                                pass
+                        else:
+                            pass
+                    except:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+            else:
+                gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
+                edges = cv2.Canny(gray,50,200,apertureSize=3)
+                thresholds = [135, 100, 80, 150, 50]
+                rhos = [1,2]
+                for rho in rhos:
+                    for threshold in thresholds:
+                        lines = cv2.HoughLinesP(
+                                        edges, 
+                                        rho, 
+                                        # np.pi/180, 
+                                        np.pi/120, 
+                                        threshold=threshold,
+                                        minLineLength=200, 
+                                        maxLineGap= 40
+                                        )
+                        x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
+                        flag_left, flag_right = False, False
+                        try:
+                            for line in lines:
+                                x1, y1, x2, y2 = line[0]
+                                # cv2.line(warp_dst, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                                if are_lines_perpendicular(angle_deg, threshold=8) and x1 < int(warp_dst.shape[1]/2) - int(warp_dst.shape[1]/4) and x1 > 10 and x2 > 10:
+                                    flag_left = True
+                                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                                    if x_min != 0 and x1 < x_min:
+                                        x_min = int((x1 + x2)/2) - 10
+                                    elif x_min == 0:
+                                        x_min = int((x1 + x2)/2) - 10
+                                if are_lines_perpendicular(angle_deg, threshold=6) and x1 > int(warp_dst.shape[1]/2) + int(warp_dst.shape[1]/4) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
+                                    flag_right = True
+                                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                                    if x_max != warp_dst.shape[1] and x1 > x_max:
+                                        x_max = int((x1 + x2)/2)
+                                    elif x_max == warp_dst.shape[1]:
+                                        x_max = int((x1 + x2)/2)
+                        except:
+                            pass
+
+                        if flag_left and flag_right:
+                            break
+                    if flag_left and flag_right:
+                        break
+                # st.image(warp_dst, caption='Hình ảnh warp_dst', use_column_width=True)
+                final_image = warp_dst[:, x_min:x_max]
+                # st.image(cropped_image, caption='Hình ảnh crop cuối', use_column_width=True)
+
+                img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
+
+                LP_WIDTH = final_image.shape[1]
+                LP_HEIGHT = final_image.shape[0]
+
+                #estimations of character contours sizes of cropped license plates
+                dimensions = [LP_WIDTH/14,
+                                    LP_WIDTH/4,
+                                    LP_HEIGHT/4,
+                                    LP_HEIGHT/2]
+
+                # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+                _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
+
+                cntrs, _ = cv2.findContours(img_binary_lp.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                # print(cntrs)
+                #Approx dimensions of the contours
+                lower_width = dimensions[0]
+                upper_width = dimensions[1]
+                lower_height = dimensions[2]
+                upper_height = dimensions[3]
+
+                #Check largest 15 contours for license plate character respectively
+                cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
+
+
+                character = []
+                x_cntr_list_1 = []
+                x_cntr_list_2 = []
+                target_contours = []
+                img_res_1 = []
+                img_res_2 = []
+
+                rotate_locations = []
+
+                for cntr in cntrs :
+                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
+                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
+                    intX-=5
+                    intY-=5
+                    intWidth = int(intWidth*1.2)
+                    intHeight = int(intHeight*1.1)
+                    
+                    #checking the dimensions of the contour to filter out the characters by contour's size
+                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY < LP_HEIGHT/3  and intX > 0 and intY > 0:
+                        x_cntr_list_1.append(intX) 
+                        char_copy = np.zeros((44,24))
+                        #extracting each character using the enclosing rectangle's coordinates.
+                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
+                        char = cv2.resize(char, (75, 100))
+                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
+                        img_res_1.append(char) # List that stores the character's binary image (unsorted)
+
+                for cntr in cntrs :
+                    #detecting contour in binary image and returns the coordinates of rectangle enclosing it
+                    intX, intY, intWidth, intHeight = cv2.boundingRect(cntr)
+                    intX-=5
+                    intY-=5
+                    intWidth = int(intWidth*1.2)
+                    intHeight = int(intHeight*1.1)
+                    if intX < 0:
+                        intX = 1
+                    if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY > LP_HEIGHT/3 and intX>0 and intY > 0:
+                        # print(intX, intY, intWidth, intHeight)
+                        rotate_locations.append([intX, intY])
+                        x_cntr_list_2.append(intX) 
+                        char_copy = np.zeros((44,24))
+                        #extracting each character using the enclosing rectangle's coordinates.
+                        char = final_image[intY:intY+intHeight, intX:intX+intWidth]
+                        char = cv2.resize(char, (75, 100))
+                        cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
+                        img_res_2.append(char) # List that stores the character's binary image (unsorted)
+            
+                #arbitrary function that stores sorted list of character indeces
+                indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
+                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
+                img_res_copy = []
+                for idx in indices:
+                    img_res_copy.append(img_res_1[idx])# stores character images according to their index
+                img_res_1 = np.array(img_res_copy)
+
+                #arbitrary function that stores sorted list of character indeces
+                indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
+                # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
+                img_res_copy = []
+                for idx in indices:
+                    img_res_copy.append(img_res_2[idx])# stores character images according to their index
+                img_res_2 = np.array(img_res_copy)
+                
+                if(len(img_res_1) != 0 and len(img_res_2) != 0):
+                    img_res = np.concatenate((img_res_1, img_res_2), axis=0)
+                elif (len(img_res_1) != 0 and len(img_res_2) == 0):
+                    img_res = img_res_1
+                elif (len(img_res_1) == 0 and len(img_res_2) != 0):
+                    img_res = img_res_2
+                else:
+                    img_res = []
+                for i in range(len(img_res)):
+
+                    # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
+                    normalized_image = cv2.normalize(img_res[i], None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+
+                    resized_finalimage = cv2.resize(normalized_image, (75, 100))
+
+                    resized_finalimage = np.expand_dims(resized_finalimage, axis=0)
+
+                    predicts = cnn.predict(resized_finalimage)
+                    predicted_class = np.argmax(predicts, axis=1)
+                    print(predicted_class[0])
+
+                    if (predicted_class[0]) >= 10:
+                        character.append(chr((predicted_class[0] - 10) + ord('A')))
+                    else:
+                        character.append(predicted_class[0])
+
+                char_array = [str(item) for item in character]
+                result_string = ''.join(char_array[:])
+                list_result = []
+                list_result.append(result_string)
+                # if len(result_string) == 0:
+                #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+                #     st.markdown(s, unsafe_allow_html=True) 
+                if len(result_string) >= 0 and len(result_string) < 9:
+                    try:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                            list_result.append(result_string)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                                list_result.append(result_string)
+                                if len(result_string) >=0 and len(result_string) < 9:
+                                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                                    list_result.append(result_string)
+                                else:
+                                    pass
+                            else:
+                                pass
+                        else:
+                            pass
+                    except:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+
+                elif len(result_string) == 9:
+                    pass
+                else:
+                    try:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                            list_result.append(result_string)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                                list_result.append(result_string)
+                                if len(result_string) >=0 and len(result_string) < 9:
+                                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                                    list_result.append(result_string)
+                                else:
+                                    pass
+                            else:
+                                pass
+                        else:
+                            pass
+                    except:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+    except Exception:
+        pass
+    longest_string = max(list_result, key=len)
+    return img, img_draw, cropped_image, image_copy, warp_dst, final_image, img_binary_lp, longest_string
+
+
 def DisplayDemo(yolo, cnn, uploaded_files, version = 2):
-    img, img_draw, cropped_image, restore_img, warp_dst, final_image, img_binary_lp, result_string = RunDemo(yolo, cnn, uploaded_files, version)
+    img, img_draw, cropped_image, image_copy, warp_dst, final_image, img_binary_lp, result_string = RunDemo(yolo, cnn, uploaded_files, version)
     with st.expander("Step 1"):
         st.write("Image shape:", img.shape)
         st.image(img, caption='Uploaded Image.', use_column_width=True)
@@ -943,47 +1208,63 @@ def DisplayDemo(yolo, cnn, uploaded_files, version = 2):
         code = '''x_min, y_min = int(x - w / 2), int(y - h / 2)
 x_max, y_max = int(x + w / 2), int(y + h / 2)
 
-cropped_image = img[y_min:y_max, x_min:x_max]
-cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)'''
+cropped_image = img[y_min:y_max, x_min:x_max]'''
         st.code(code, language='python')
-        st.image(cropped_image, caption='Cropped Image.', use_column_width=True)
+        st.image(image_copy, caption='Cropped Image.', use_column_width=True)
 
     with st.expander("Step 2"):
-        st.info('Sau khi cắt ảnh thì dùng mô hình GFPGAN để làm tăng chất lượng hình ảnh', icon="ℹ️")
+        st.info('Sau khi cắt ảnh nếu ảnh có chất lượng < 100px thì dùng mô hình GFPGAN để làm tăng chất lượng hình ảnh, còn nếu chất lượng hình ảnh > 100px thì tăng upsize ảnh lên kích thươc 690x600 để đồng bộ cho việc xử lý ảnh', icon="ℹ️")
         code = '''restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)'''
         st.code(code, language='python')
-        st.image(restore_img, caption='Restoration Image.', use_column_width=True)
+        st.image(image_copy, caption='Restoration Image.', use_column_width=True)
 
     with st.expander("Step 3"):
-        image_copy = restore_img.copy()
-        gray = cv2.cvtColor(restore_img,cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(image_copy,cv2.COLOR_BGR2GRAY)
         # Use canny edge detection
         edges = cv2.Canny(gray,100,200,apertureSize=3)
-        lines = cv2.HoughLinesP(
-                    edges, # Input edge image
-                    1, # Distance resolution in pixels
-                    # np.pi/180, # Angle resolution in radians
-                    np.pi/120, # Angle resolution in radians
-                    threshold=120, # Min number of votes for valid line
-                    minLineLength=250, # Min allowed length of line
-                    maxLineGap= 200 # Max allowed gap between line for joining them
-                    )
-
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg_check = np.degrees(angle_rad)
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            if y2 >= 0 and y2 < int(restore_img.shape[0]/2) and y1 >= 0 and y1 < int(restore_img.shape[0]/2) and np.abs(angle_deg_check) < 45:
-                cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
-            if y2 > int(restore_img.shape[0]/2) and y2 < int(restore_img.shape[0]) and y1 >  int(restore_img.shape[0]/2) and y1 < int(restore_img.shape[0]) and np.abs(angle_deg_check) < 45:
-                cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                angle_rad = np.arctan2(y2 - y1, x2 - x1)
-                angle_deg = np.degrees(angle_rad)
+        thresholds = [200, 220, 100, 50]
+        rhos = [5,2]
+        angle_deg = 0
+        lineGaps = [40, ]
+        for lineGap in lineGaps:
+            for rho in rhos:
+                for threshold in thresholds:
+                    lines = cv2.HoughLinesP(
+                                edges, 
+                                rho, 
+                                np.pi/180,
+                                threshold=threshold, 
+                                minLineLength=360, 
+                                maxLineGap= lineGap
+                                )
+                    try:
+                        for line in lines:
+                            x1, y1, x2, y2 = line[0]
+                            angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                            angle_deg_check = np.degrees(angle_rad)
+                            # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            if angle_deg == 0:
+                                if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60:
+                                    cv2.line(image_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                    angle_deg = np.degrees(angle_rad)
+                                if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60:
+                                    cv2.line(image_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                    angle_deg = np.degrees(angle_rad)
+                            else:
+                                # if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                                #     cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                #     angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                #     angle_deg = np.degrees(angle_rad)
+                                if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 > int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                                    cv2.line(image_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                    angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                    angle_deg = np.degrees(angle_rad)
+                    except:
+                        pass
         st.info('Kết tiếp sẽ tìm những đường thằng và tính góc của đường thẳng đó so với ***Trục Ngang***', icon="👉")
-        st.image(restore_img, caption='Restoration Image.', use_column_width=True)
+        st.image(image_copy, caption='Restoration Image.', use_column_width=True)
         rotated_image = imutils.rotate(image_copy, angle_deg)
         if len(result_string) == 0:
             st.info('Xoay bị sai rồi 😓',icon="🤧")
@@ -1000,69 +1281,13 @@ cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_
 
     with st.expander("Step 4"):
         st.info('Kết quả sau khi sử dụng hàm findContours code xử lý ảnh để tìm ra các chữ số. Sau có sử dụng mô hình CNN để nhận diện kí tự.', icon="👉")
-        st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
         if len(result_string) == 0:
+            st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
             s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
             st.markdown(s, unsafe_allow_html=True) 
-        elif len(result_string) > 0 and len(result_string) < 9:
-            try:
-                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
-                st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
-                if len(result_string) >=0 and len(result_string) < 9:
-                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
-                    if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
-                        if(len(result_string) <8):
-                            s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
-                            st.markdown(s, unsafe_allow_html=True) 
-                        else:
-                            s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
-                            st.markdown(s, unsafe_allow_html=True) 
-                            df = pd.read_excel('./BANG_SO_XE.xlsx')
-                            data_array = df.values
-                            for i in range(len(data_array)):
-                                if np.char.strip(data_array[i][1]) == result_string[:4]:
-                                    s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
-                                    st.markdown(s, unsafe_allow_html=True)
-                                    break
-                    else:
-                        s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
-                        st.markdown(s, unsafe_allow_html=True) 
-                        df = pd.read_excel('./BANG_SO_XE.xlsx')
-                        data_array = df.values
-                        for i in range(len(data_array)):
-                            if np.char.strip(data_array[i][1]) == result_string[:4]:
-                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
-                                st.markdown(s, unsafe_allow_html=True)
-                                break
-                else:
-                    s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
-                    st.markdown(s, unsafe_allow_html=True) 
-                    df = pd.read_excel('./BANG_SO_XE.xlsx')
-                    data_array = df.values
-                    for i in range(len(data_array)):
-                        if np.char.strip(data_array[i][1]) == result_string[:4]:
-                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
-                            st.markdown(s, unsafe_allow_html=True)
-                            break
-            except:
-                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
-                if(len(result_string) <8):
-                    s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
-                    st.markdown(s, unsafe_allow_html=True) 
-                else:
-                    s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
-                    st.markdown(s, unsafe_allow_html=True) 
-
-                    df = pd.read_excel('./BANG_SO_XE.xlsx')
-                    data_array = df.values
-                    for i in range(len(data_array)):
-                        if np.char.strip(data_array[i][1]) == result_string[:4]:
-                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
-                            st.markdown(s, unsafe_allow_html=True)
-                            break
 
         elif len(result_string) == 9:
+            st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
             s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
             st.markdown(s, unsafe_allow_html=True) 
 
@@ -1073,6 +1298,24 @@ cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_
                     s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
                     st.markdown(s, unsafe_allow_html=True)
                     break
+
+        elif len(result_string) > 0 and len(result_string) < 9:
+            char = result_string[2]
+            if ord(char) >= 65 and ord(char) <= 90:
+                st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
+                s = f"<p style='font-size:50px;'>{result_string[:2]}-{result_string[2:4]} {result_string[4:]}</p>"
+                st.markdown(s, unsafe_allow_html=True)
+                df = pd.read_excel('./BANG_SO_XE.xlsx')
+                data_array = df.values
+                for i in range(len(data_array)):
+                    if np.char.strip(data_array[i][1]) == result_string[:4]:
+                        s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                        st.markdown(s, unsafe_allow_html=True)
+                        break
+            else:
+                st.image(img_binary_lp, caption='Image Binary', use_column_width=True)
+                s = f"<p style='font-size:50px;'>{result_string}</p>"
+                st.markdown(s, unsafe_allow_html=True)
         else:
             try:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)

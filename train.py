@@ -7,7 +7,7 @@ add_page_title()
 with st.form("select_anchors"):
     path_train = st.text_input('Nhập đường dẫn tới thư mục chứa dữ liệu training', placeholder="Path....")
     path_val = st.text_input('Nhập đường dẫn tới thư mục chứa dữ liệu validation', placeholder="Path....")
-    select_model = st.selectbox("Chọn mô hình", ("Yolov2", "Yolov3", "Yolov4"))
+    select_model = st.selectbox("Chọn mô hình", ("Yolov2", "Yolov3", "Yolov4", "Yolov8"))
     
     cluster = st.slider('Chọn số cụm để chạy K-Means', 0, 20)
 
@@ -74,4 +74,17 @@ if trainable:
         s = f"<p style='font-size:40px;'>Val_Accuracy: {data_array[0][5]}</p>"
         st.markdown(s, unsafe_allow_html=True) 
         s = f"<p style='font-size:40px;'>Time Train: {data_array[0][6]}</p>"
+        st.markdown(s, unsafe_allow_html=True) 
+    if select_model == "Yolov8":
+        s = f"<p style='font-size:40px;'>Kết quả sau khi train với Yolov8</p>"
+        st.markdown(s, unsafe_allow_html=True) 
+        dataframe = pd.read_excel('./spec_Yolo.xlsx', sheet_name='Yolov8')
+        data_array = dataframe.values
+        s = f"<p style='font-size:40px;'>Batch Size: {data_array[0][0]}</p>"
+        st.markdown(s, unsafe_allow_html=True) 
+        s = f"<p style='font-size:40px;'>Epoch: {data_array[0][1]}</p>"
+        st.markdown(s, unsafe_allow_html=True)  
+        s = f"<p style='font-size:40px;'>mAP: {data_array[0][2]}</p>"
+        st.markdown(s, unsafe_allow_html=True) 
+        s = f"<p style='font-size:40px;'>Time Train: {data_array[0][3]}</p>"
         st.markdown(s, unsafe_allow_html=True) 

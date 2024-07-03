@@ -60,8 +60,49 @@ def cal_iou_nms(xywh_true, xywh_pred):
     
     return iou_scores
 
-def iou(xywh_true, xywh_pred):
+# def iou(xywh_true, xywh_pred):
 
+#     x_true = xywh_true[0]
+#     y_true = xywh_true[1]
+#     w_true = xywh_true[2]
+#     h_true = xywh_true[3]
+
+#     x_pred = xywh_pred[0]
+#     y_pred = xywh_pred[1]
+#     w_pred = xywh_pred[2]
+#     h_pred = xywh_pred[3]
+
+#     half_x_true = w_true/2.
+#     half_y_true = h_true/2.
+
+#     min_x_true = x_true - half_x_true
+#     min_y_true = y_true - half_y_true
+#     max_x_true = x_true + half_x_true
+#     max_y_true = y_true + half_y_true
+
+#     half_x_pred = w_pred/2.
+#     half_y_pred = h_pred/2.
+
+#     min_x_pred = x_pred - half_x_pred
+#     min_y_pred = y_pred - half_y_pred
+#     max_x_pred = x_pred + half_x_pred
+#     max_y_pred = y_pred + half_y_pred
+
+#     intersect_x_min = max(int(min_x_true), int(min_x_pred))
+#     intersect_y_min = max(int(min_y_true), int(min_y_pred))
+
+#     intersect_x_max = min(int(max_x_true), int(max_x_pred))
+#     intersect_y_max = min(int(max_y_true), int(max_y_pred))
+
+#     intersect_areas = (intersect_x_max - intersect_x_min) * (intersect_y_max - intersect_y_min)
+#     true_areas = w_true * h_true
+#     pred_areas = w_pred * h_pred
+
+#     union_areas = pred_areas + true_areas - intersect_areas
+#     iou_scores  = intersect_areas/(union_areas + epsilon)
+
+#     return iou_scores
+def iou(xywh_true, xywh_pred, epsilon=1e-6):
     x_true = xywh_true[0]
     y_true = xywh_true[1]
     w_true = xywh_true[2]
@@ -72,36 +113,40 @@ def iou(xywh_true, xywh_pred):
     w_pred = xywh_pred[2]
     h_pred = xywh_pred[3]
 
-    half_x_true = w_true/2.
-    half_y_true = h_true/2.
+    half_w_true = w_true / 2.
+    half_h_true = h_true / 2.
 
-    min_x_true = x_true - half_x_true
-    min_y_true = y_true - half_y_true
-    max_x_true = x_true + half_x_true
-    max_y_true = y_true + half_y_true
+    min_x_true = x_true - half_w_true
+    min_y_true = y_true - half_h_true
+    max_x_true = x_true + half_w_true
+    max_y_true = y_true + half_h_true
 
-    half_x_pred = w_pred/2.
-    half_y_pred = h_pred/2.
+    half_w_pred = w_pred / 2.
+    half_h_pred = h_pred / 2.
 
-    min_x_pred = x_pred - half_x_pred
-    min_y_pred = y_pred - half_y_pred
-    max_x_pred = x_pred + half_x_pred
-    max_y_pred = y_pred + half_y_pred
+    min_x_pred = x_pred - half_w_pred
+    min_y_pred = y_pred - half_h_pred
+    max_x_pred = x_pred + half_w_pred
+    max_y_pred = y_pred + half_h_pred
 
-    intersect_x_min = max(int(min_x_true), int(min_x_pred))
-    intersect_y_min = max(int(min_y_true), int(min_y_pred))
+    intersect_x_min = max(min_x_true, min_x_pred)
+    intersect_y_min = max(min_y_true, min_y_pred)
+    intersect_x_max = min(max_x_true, max_x_pred)
+    intersect_y_max = min(max_y_true, max_y_pred)
 
-    intersect_x_max = min(int(max_x_true), int(max_x_pred))
-    intersect_y_max = min(int(max_y_true), int(max_y_pred))
 
-    intersect_areas = (intersect_x_max - intersect_x_min) * (intersect_y_max - intersect_y_min)
-    true_areas = w_true * h_true
-    pred_areas = w_pred * h_pred
+    intersect_width = max(0, intersect_x_max - intersect_x_min)
+    intersect_height = max(0, intersect_y_max - intersect_y_min)
+    intersect_area = intersect_width * intersect_height
 
-    union_areas = pred_areas + true_areas - intersect_areas
-    iou_scores  = intersect_areas/(union_areas + epsilon)
+    true_area = w_true * h_true
+    pred_area = w_pred * h_pred
 
-    return iou_scores
+    union_area = true_area + pred_area - intersect_area
+    iou_score = intersect_area / (union_area + epsilon)
+
+    return iou_score
+
 
 def giou(xywh_true, xywh_pred):
     x_true = xywh_true[0]
@@ -550,7 +595,7 @@ def Rerun(final_image, cnn, threshold = 170):
     #estimations of character contours sizes of cropped license plates
     dimensions = [LP_WIDTH/14,
                         LP_WIDTH/4,
-                        LP_HEIGHT/3,
+                        LP_HEIGHT/4,
                         LP_HEIGHT/2]
 
     # _, img_binary_lp = cv2.threshold(img_gray_lp, 140, 255, cv2.THRESH_BINARY)
@@ -670,7 +715,7 @@ class Args():
         self.model = 'yolov8_n'
         self.num_classes = 1
         self.weight = './Weights/yolov8_n_last_mosaic_epoch.pth'
-        self.conf_thresh = 0.35
+        self.conf_thresh = 0.05
         self.nms_thresh = 0.5
         self.topk = 100
         self.deploy = False
@@ -734,88 +779,106 @@ def RunDemoV8(yolo, cnn, image):
     x_min, y_min = int(x - w / 2), int(y - h / 2)
     x_max, y_max = int(x + w / 2), int(y + h / 2)
 
-    img_draw = Image.fromarray(image)
-    draw = ImageDraw.Draw(img_draw)
-
-    draw.rectangle([x_min, y_min, x_max, y_max], outline='red')
+    if x_min < 0:
+        x_min = 1
+    if y_min < 0:
+        y_min = 1
 
     cropped_image = image[y_min:y_max, x_min:x_max]
-    cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+    if cropped_image.shape[0] <= 115:
+        cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+        # st.image(cropped_image, caption="Hình ảnh sau khi resize về kích thước 115x100", use_column_width=True)
 
-    restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
+        restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
 
-    image_copy = restore_img.copy()
+        image_copy = restore_img.copy()
+        # st.image(cropped_image, caption="Hình ảnh sau khi khôi phục", use_column_width=True)
+    else:
+        image_copy = cv2.resize(cropped_image, (690, 600), interpolation = cv2.INTER_AREA)
     
     # Convert image to grayscale
-    gray = cv2.cvtColor(restore_img,cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(image_copy,cv2.COLOR_BGR2GRAY)
     # Use canny edge detection
     edges = cv2.Canny(gray,100,200,apertureSize=3)
     lines = cv2.HoughLinesP(
                 edges, # Input edge image
-                1, # Distance resolution in pixels
-                # np.pi/180, # Angle resolution in radians
-                np.pi/120, # Angle resolution in radians
-                threshold=120, # Min number of votes for valid line
-                minLineLength=250, # Min allowed length of line
-                maxLineGap= 200 # Max allowed gap between line for joining them
+                5, # Distance resolution in pixels
+                np.pi/180, # Angle resolution in radians
+                # np.pi/120, # Angle resolution in radians
+                threshold=200, # Min number of votes for valid line
+                minLineLength=360, # Min allowed length of line
+                maxLineGap= 40 # Max allowed gap between line for joining them
                 )
-
+    angle_deg = 0
     for line in lines:
         x1, y1, x2, y2 = line[0]
         angle_rad = np.arctan2(y2 - y1, x2 - x1)
         angle_deg_check = np.degrees(angle_rad)
-        # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        if y2 >= 0 and y2 < int(restore_img.shape[0]/2) and y1 >= 0 and y1 < int(restore_img.shape[0]/2) and np.abs(angle_deg_check) < 45:
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
-        if y2 > int(restore_img.shape[0]/2) and y2 < int(restore_img.shape[0]) and y1 >  int(restore_img.shape[0]/2) and y1 < int(restore_img.shape[0]) and np.abs(angle_deg_check) < 45:
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
+        # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        if angle_deg == 0:
+            if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60:
+                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                angle_deg = np.degrees(angle_rad)
+            if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60:
+                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                angle_deg = np.degrees(angle_rad)
+        else:
+            # if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+            #     cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            #     angle_rad = np.arctan2(y2 - y1, x2 - x1)
+            #     angle_deg = np.degrees(angle_rad)
+            if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                angle_deg = np.degrees(angle_rad)
 
     rotated_image = imutils.rotate(image_copy, angle_deg)
 
     gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray,50,200,apertureSize=3)
     lines = cv2.HoughLinesP(
-                        edges, # Input edge image
-                        1, # Distance resolution in pixels
-                        # np.pi/180, # Angle resolution in radians
-                        np.pi/120, # Angle resolution in radians
-                        # threshold=100, # Min number of votes for valid line
-                        threshold=100, # Min number of votes for valid line
-                        minLineLength=200, # Min allowed length of line
-                        maxLineGap= 300 # Max allowed gap between line for joining them
-                        )
+                edges, # Input edge image
+                5, # Distance resolution in pixels
+                np.pi/180, # Angle resolution in radians
+                # np.pi/120, # Angle resolution in radians
+                threshold=200, # Min number of votes for valid line
+                minLineLength=360, # Min allowed length of line
+                maxLineGap= 50 # Max allowed gap between line for joining them
+                )
+    angle_deg = 0
     distance_top = 600
     distance_bottom = 600
-    y_min, y_max = 0, rotated_image.shape[0]
+    y_min, y_max = 0, 0
     deg = 0
     # height_tmp = int(image.shape[1])
     for line in lines:
         x1, y1, x2, y2 = line[0]
+        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
         angle_rad = np.arctan2(y2 - y1, x2 - x1)
         angle_deg = np.degrees(angle_rad)
-        if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
-            # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-            y_min = y2
-        if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max > y2 and y2 > rotated_image.shape[0]/2 + 50:
+        if y_min == 0:
+            if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
+                # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                y_min = y2
+        else:
+            if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min > y2:
+                # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                y_min = y2
+        if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max < y2 and y2 > rotated_image.shape[0]/2 + 50:
             # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
             y_max = y2
 
+        # if x1 < int(rotated_image.shape[1]/2) and x2 < int(rotated_image.shape[1]/2):
+        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
         angle_rad = np.arctan2(y2 - y1, x2 - x1)
         angle_deg = np.degrees(angle_rad)
-        if are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            distance_bottom = 0
-            distance_top = 0
-            deg = 0
-        elif are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
-            # np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90)))
+        if are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
             if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
                 tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
                 if tmp <= distance_top :
+                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     distance_top = tmp
                     deg = np.abs(angle_deg)
             elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
@@ -824,18 +887,32 @@ def RunDemoV8(yolo, cnn, image):
                     distance_bottom = tmp
                     deg = np.abs(angle_deg)
 
+        elif are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            distance_bottom = 0
+            distance_top = 0
+            deg = 0
+    if(y_max == 0):
+        y_max = rotated_image.shape[0]
+
     if(distance_top != 600):
-        crop_image = rotated_image[np.abs(y_min - 20):y_max + 15, :]
-        src = crop_image.copy()
+        # print(y_min, y_max)
+        cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+        # src = rotated_image.copy()
+        src = cropped_image.copy()
         srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+        # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
         dstTri = np.array( [[-distance_top, 0], [src.shape[1], 0 ], [0 , src.shape[0]]] ).astype(np.float32)
         warp_mat = cv2.getAffineTransform(srcTri, dstTri)
         warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
 
     if(distance_bottom != 600):
-        crop_image = rotated_image[np.abs(y_min - 20):y_max + 15, :]
-        src = crop_image.copy()
+        # print(y_min, y_max)
+        cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+        # src = rotated_image.copy()
+        src = cropped_image.copy()
         srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+        # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
         dstTri = np.array( [[0, 0], [src.shape[1], 0 ], [-distance_bottom , src.shape[0]]] ).astype(np.float32)
         warp_mat = cv2.getAffineTransform(srcTri, dstTri)
         warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
@@ -845,22 +922,26 @@ def RunDemoV8(yolo, cnn, image):
         gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,200,apertureSize=3)
         lines = cv2.HoughLinesP(
-                            edges, # Input edge image
-                            1, # Distance resolution in pixels
-                            # np.pi/180, # Angle resolution in radians
-                            np.pi/120, # Angle resolution in radians
-                            # threshold=100, # Min number of votes for valid line
-                            threshold=120, # Min number of votes for valid line
-                            minLineLength=250, # Min allowed length of line
-                            maxLineGap= 300 # Max allowed gap between line for joining them
-                            )
+                    edges, # Input edge image
+                    5, # Distance resolution in pixels
+                    np.pi/180, # Angle resolution in radians
+                    # threshold=100, # Min number of votes for valid line
+                    threshold=110, # Min number of votes for valid line
+                    minLineLength=300, # Min allowed length of line
+                    maxLineGap= 35 # Max allowed gap between line for joining them
+                    )
         distance_top = 0
         distance_bottom = 0
-        x_min, y_min, x_max, y_max = 0, 0, 0,0
+        x_min, y_min, x_max, y_max = 0, 0, rotated_image.shape[1],rotated_image[0]
         deg = 0
+        # height_tmp = int(image.shape[1])
         for line in lines:
             x1, y1, x2, y2 = line[0]
+            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
             angle_rad = np.arctan2(y2 - y1, x2 - x1)
+            angle_deg = np.degrees(angle_rad)
+
+
             if are_lines_parallel(angle_deg) and y1 < int(rotated_image.shape[0]/2):
                 # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
                 y_min = y1
@@ -873,6 +954,7 @@ def RunDemoV8(yolo, cnn, image):
             if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
                 # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
                 x_max = x1
+        # st.image(rotated_image, caption='Hình ảnh với xoay', use_column_width=True)
         final_image = rotated_image[y_min:y_max, x_min:x_max]
 
 
@@ -884,9 +966,6 @@ def RunDemoV8(yolo, cnn, image):
                             LP_WIDTH/4,
                             LP_HEIGHT/3,
                             LP_HEIGHT/2]
-
-        # img_gray_lp = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2GRAY)
-        st.image(img_gray_lp, caption='Gray Image.', use_column_width=True)
         # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
 
@@ -899,6 +978,7 @@ def RunDemoV8(yolo, cnn, image):
 
         #Check largest 15 contours for license plate character respectively
         cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
+
 
         character = []
         x_cntr_list_1 = []
@@ -924,6 +1004,7 @@ def RunDemoV8(yolo, cnn, image):
                 #extracting each character using the enclosing rectangle's coordinates.
                 char = final_image[intY:intY+intHeight, intX:intX+intWidth]
                 char = cv2.resize(char, (75, 100))
+                cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
                 img_res_1.append(char) # List that stores the character's binary image (unsorted)
 
         for cntr in cntrs :
@@ -941,10 +1022,12 @@ def RunDemoV8(yolo, cnn, image):
                 #extracting each character using the enclosing rectangle's coordinates.
                 char = final_image[intY:intY+intHeight, intX:intX+intWidth]
                 char = cv2.resize(char, (75, 100))
+                cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
                 img_res_2.append(char) # List that stores the character's binary image (unsorted)
     
         #arbitrary function that stores sorted list of character indeces
         indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
+        # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
         img_res_copy = []
         for idx in indices:
             img_res_copy.append(img_res_1[idx])# stores character images according to their index
@@ -952,6 +1035,7 @@ def RunDemoV8(yolo, cnn, image):
 
         #arbitrary function that stores sorted list of character indeces
         indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
+        # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
         img_res_copy = []
         for idx in indices:
             img_res_copy.append(img_res_2[idx])# stores character images according to their index
@@ -981,38 +1065,92 @@ def RunDemoV8(yolo, cnn, image):
 
         char_array = [str(item) for item in character]
         result_string = ''.join(char_array[:])
+        list_result = []
+        list_result.append(result_string)
+        # if len(result_string) == 0:
+        #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+        #     st.markdown(s, unsafe_allow_html=True) 
+        if len(result_string) >= 0 and len(result_string) < 9:
+            try:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
+                if len(result_string) >=0 and len(result_string) < 9:
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
+                    else:
+                        pass
+                else:
+                    pass
+            except:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
+
+        elif len(result_string) == 9:
+            list_result.append(result_string)
+        else:
+            try:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
+                if len(result_string) >=0 and len(result_string) < 9:
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
+                    else:
+                        pass
+                else:
+                    pass
+            except:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
     else:
         gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray,50,200,apertureSize=3)
+        edges = cv2.Canny(gray,50,250,apertureSize=3)
         lines = cv2.HoughLinesP(
                     edges, # Input edge image
-                    1, # Distance resolution in pixels
-                    # np.pi/180, # Angle resolution in radians
-                    np.pi/120, # Angle resolution in radians
+                    5, # Distance resolution in pixels
+                    np.pi/180, # Angle resolution in radians
                     # threshold=100, # Min number of votes for valid line
-                    threshold=100, # Min number of votes for valid line
-                    minLineLength=100, # Min allowed length of line
-                    maxLineGap= 200 # Max allowed gap between line for joining them
+                    threshold=110, # Min number of votes for valid line
+                    minLineLength=300, # Min allowed length of line
+                    maxLineGap= 35 # Max allowed gap between line for joining them
                     )
         x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
-            if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 20 and x2 > 20:
-                # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                if x_min != 0 and x1 < x_min:
-                    x_min = x1
-                elif x_min == 0:
-                    x_min = x1
-            if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-20 and x2 < warp_dst.shape[1]-20:
-                # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                if x_max != warp_dst.shape[1] and x1 > x_max:
-                    x_max = x1
-                elif x_max == warp_dst.shape[1]:
-                    x_max = x1
+        try:
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                # cv2.line(warp_dst, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                angle_deg = np.degrees(angle_rad)
+                if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 10 and x2 > 10:
+                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                    if x_min != 0 and x1 < x_min:
+                        x_min = int((x1 + x2)/2)
+                    elif x_min == 0:
+                        x_min = int((x1 + x2)/2)
+                if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
+                    # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                    if x_max != warp_dst.shape[1] and x1 > x_max:
+                        x_max = int((x1 + x2)/2)
+                    elif x_max == warp_dst.shape[1]:
+                        x_max = int((x1 + x2)/2)
+        except:
+            pass
         final_image = warp_dst[:, x_min:x_max]
-
 
         img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
 
@@ -1126,40 +1264,61 @@ def RunDemoV8(yolo, cnn, image):
         char_array = [str(item) for item in character]
         result_string = ''.join(char_array[:])
 
-        if len(result_string) == 0:
-            s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
-            st.markdown(s, unsafe_allow_html=True) 
-        elif len(result_string) > 0 and len(result_string) < 9:
+        list_result = []
+        list_result.append(result_string)
+        # if len(result_string) == 0:
+        #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+        #     st.markdown(s, unsafe_allow_html=True) 
+        if len(result_string) >= 0 and len(result_string) < 9:
             try:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
                 if len(result_string) >=0 and len(result_string) < 9:
-                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
                     else:
                         pass
                 else:
                     pass
             except:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
 
         elif len(result_string) == 9:
             pass
         else:
             try:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
                 if len(result_string) >=0 and len(result_string) < 9:
-                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
                     else:
                         pass
                 else:
                     pass
             except:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
 
-    return result_string, xywhcc
+    longest_string = max(list_result, key=len)
+    return longest_string, xywhcc
 
 
 def RunDemo(yolo, cnn, image, version = 2):
@@ -1201,10 +1360,17 @@ def RunDemo(yolo, cnn, image, version = 2):
     xywhcc.append(xywhcp[0][4])
     xywhcc.append(xywhcp[0][5])
 
-    x = int(xywhcp[0][0] * image.shape[1])
-    y = int(xywhcp[0][1] * image.shape[0])
-    w = int(xywhcp[0][2] * image.shape[1]*1.3)
-    h = int(xywhcp[0][3] * image.shape[0]*1.1)
+
+    if version == 4:
+        x = int(xywhcp[0][0] * image.shape[1])
+        y = int(xywhcp[0][1] * image.shape[0])
+        w = int(xywhcp[0][2] * image.shape[1]*1.5)
+        h = int(xywhcp[0][3] * image.shape[0]*1.2)
+    else:
+        x = int(xywhcp[0][0] * image.shape[1])
+        y = int(xywhcp[0][1] * image.shape[0])
+        w = int(xywhcp[0][2] * image.shape[1] * 1.3)
+        h = int(xywhcp[0][3] * image.shape[0] * 1.1)
     class_i = int(xywhcp[0][5])
 
     # Vẽ hình tròn
@@ -1214,105 +1380,179 @@ def RunDemo(yolo, cnn, image, version = 2):
     # Vẽ hình chữ nhật
     x_min, y_min = int(x - w / 2), int(y - h / 2)
     x_max, y_max = int(x + w / 2), int(y + h / 2)
+    if x_min < 0:
+        x_min = 0
+    if y_min < 0:
+        y_min = 0
+        
     draw.rectangle([x_min, y_min, x_max, y_max], outline='red')
 
     cropped_image = image[y_min:y_max, x_min:x_max]
-    cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
-
-    restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
-
-    image_copy = restore_img.copy()
+    if cropped_image.shape[0] >= 100:
+        image_copy = cv2.resize(cropped_image, (690, 600), interpolation = cv2.INTER_AREA)
+        image_cut = image_copy.copy()
+    else:
+        cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
+        restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
+        image_copy = restore_img.copy()
+        image_cut = image_copy.copy()
     
     # Convert image to grayscale
-    gray = cv2.cvtColor(restore_img,cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(image_copy,cv2.COLOR_BGR2GRAY)
     # Use canny edge detection
     edges = cv2.Canny(gray,100,200,apertureSize=3)
-    lines = cv2.HoughLinesP(
-                edges, # Input edge image
-                1, # Distance resolution in pixels
-                # np.pi/180, # Angle resolution in radians
-                np.pi/120, # Angle resolution in radians
-                threshold=120, # Min number of votes for valid line
-                minLineLength=250, # Min allowed length of line
-                maxLineGap= 200 # Max allowed gap between line for joining them
-                )
-
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        angle_rad = np.arctan2(y2 - y1, x2 - x1)
-        angle_deg_check = np.degrees(angle_rad)
-        # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        if y2 >= 0 and y2 < int(restore_img.shape[0]/2) and y1 >= 0 and y1 < int(restore_img.shape[0]/2) and np.abs(angle_deg_check) < 45:
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
-        if y2 > int(restore_img.shape[0]/2) and y2 < int(restore_img.shape[0]) and y1 >  int(restore_img.shape[0]/2) and y1 < int(restore_img.shape[0]) and np.abs(angle_deg_check) < 45:
-            # cv2.line(restore_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
-
+    thresholds = [200, 220, 100, 50]
+    rhos = [5,2]
+    angle_deg = 0
+    lineGaps = [40, ]
+    for lineGap in lineGaps:
+        for rho in rhos:
+            for threshold in thresholds:
+                lines = cv2.HoughLinesP(
+                            edges, 
+                            rho, 
+                            np.pi/180,
+                            threshold=threshold, 
+                            minLineLength=360, 
+                            maxLineGap= lineGap
+                            )
+                try:
+                    for line in lines:
+                        x1, y1, x2, y2 = line[0]
+                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                        angle_deg_check = np.degrees(angle_rad)
+                        # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        if angle_deg == 0:
+                            if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60:
+                                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                            if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 >  int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60:
+                                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                        else:
+                            # if y2 >= 0 and y2 < int(image_copy.shape[0]/2) and y1 >= 0 and y1 < int(image_copy.shape[0]/2) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                            #     cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            #     angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                            #     angle_deg = np.degrees(angle_rad)
+                            if y2 > int(image_copy.shape[0]/2) and y2 < int(image_copy.shape[0]) and y1 > int(image_copy.shape[0]/2) and y1 < int(image_copy.shape[0]) and np.abs(angle_deg_check) < 60 and np.abs(angle_deg_check) < angle_deg:
+                                # cv2.line(image_cut, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                                angle_deg = np.degrees(angle_rad)
+                except:
+                    pass
     rotated_image = imutils.rotate(image_copy, angle_deg)
+    thresholds = [135, 100, 80, 150, 50]
+    rhos = [1, 2, 3]
+    lineGaps = [35, 50]
+    y_min, y_max = 0, 0
+    for lineGap in lineGaps:
+        for rho in rhos:
+            for threshold in thresholds:
+                gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
+                edges = cv2.Canny(gray,50,200,apertureSize=3)
+                lines = cv2.HoughLinesP(
+                                    edges, 
+                                    rho, 
+                                    # np.pi/180, 
+                                    np.pi/120, 
+                                    threshold=threshold,
+                                    minLineLength=300, 
+                                    maxLineGap= lineGap
+                                    )
+                
+                distance_top = 600
+                distance_bottom = 600
+                # y_min, y_max = 0, 0
+                angle_deg = 0
+                deg = 0
+                # height_tmp = int(image.shape[1])
+                try:
+                    for line in lines:
+                        x1, y1, x2, y2 = line[0]
+                        # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                        angle_deg = np.degrees(angle_rad)
+                        if y_min == 0:
+                            if y2 < int(rotated_image.shape[0]/2) - int(rotated_image.shape[0]/6) and y1 < int(rotated_image.shape[0]/2) - int(rotated_image.shape[0]/6) and are_lines_parallel(angle_deg, threshold=5) and y_min < y2 and y2 > 10:
+                                y_min = y2
+                        else:
+                            if y2 < int(rotated_image.shape[0]/2) - 10 and y1 < int(rotated_image.shape[0]/2) - 10 and are_lines_parallel(angle_deg, threshold=5) and y_min > y2 and y2 > 10:
+                                y_min = y2
+                        if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=5) and y_max < y2 and y2 > rotated_image.shape[0]/2 + 50 and y2 < rotated_image.shape[0] - 20:
+                            y_max = y2
 
-    gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray,50,200,apertureSize=3)
-    lines = cv2.HoughLinesP(
-                        edges, # Input edge image
-                        1, # Distance resolution in pixels
-                        # np.pi/180, # Angle resolution in radians
-                        np.pi/120, # Angle resolution in radians
-                        # threshold=100, # Min number of votes for valid line
-                        threshold=100, # Min number of votes for valid line
-                        minLineLength=200, # Min allowed length of line
-                        maxLineGap= 300 # Max allowed gap between line for joining them
-                        )
-    distance_top = 600
-    distance_bottom = 600
-    y_min, y_max = 0, rotated_image.shape[0]
-    deg = 0
-    # height_tmp = int(image.shape[1])
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        angle_rad = np.arctan2(y2 - y1, x2 - x1)
-        angle_deg = np.degrees(angle_rad)
-        if y2 < int(rotated_image.shape[0]/2) and y1 < int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=3) and y_min < y2:
-            # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-            y_min = y2
-        if y2 > int(rotated_image.shape[0]/2) and y1 > int(rotated_image.shape[0]/2) and are_lines_parallel(angle_deg, threshold=4) and y_max > y2 and y2 > rotated_image.shape[0]/2 + 50:
-            # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-            y_max = y2
+                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                        angle_deg = np.degrees(angle_rad)
+                        if are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
+                            if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                                if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/6) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/6):
+                                    tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
+                                    if tmp <= distance_top :
+                                        distance_top = tmp
+                                        deg = np.abs(angle_deg)
+                            elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                                if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/6) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/6):
+                                    tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
+                                    if tmp <= distance_bottom:
+                                        distance_bottom = tmp
+                                        deg = np.abs(angle_deg)
+                        
+                        elif are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
+                            if x1 > int(rotated_image.shape[1]/2 + rotated_image.shape[1]/3) or x1 < int(rotated_image.shape[1]/2 - rotated_image.shape[1]/3):
+                                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                distance_bottom = 0
+                                distance_top = 0
+                                deg = 0
 
-        angle_rad = np.arctan2(y2 - y1, x2 - x1)
-        angle_deg = np.degrees(angle_rad)
-        if are_lines_perpendicular(angle_deg) and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-            # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            distance_bottom = 0
-            distance_top = 0
-            deg = 0
-        elif are_lines_perpendicular(angle_deg, threshold=2) == False and np.abs(angle_deg) > 45 and np.abs(angle_deg) > deg:
-            # np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90)))
-            if x1 <= x2 and y1 > y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
-                if tmp <= distance_top :
-                    distance_top = tmp
-                    deg = np.abs(angle_deg)
-            elif x1 <= x2 and y1 < y2 and x1 > 10 and x2>10 and x1 < rotated_image.shape[1] - 10 and x2 < rotated_image.shape[1] - 10:
-                tmp = int(np.tan(np.deg2rad(np.abs(np.abs(angle_deg) - 90))) * np.abs(y1 - y2)) 
-                if tmp <= distance_bottom:
-                    distance_bottom = tmp
-                    deg = np.abs(angle_deg)
+                except:
+                    pass 
+                # if(y_max == 0):
+                #     y_max = rotated_image.shape[0]
+
+
+                if y_min != 0 and y_max != 0 and distance_bottom != 600:
+                    # st.write('đủ điều kiện ' + str(threshold))
+                    break
+                if y_min != 0 and y_max != 0 and distance_top != 600:
+                    # st.write('đủ điều kiện ' + str(threshold))
+                    break
+            if y_min != 0 and y_max != 0 and distance_bottom != 600 and distance_top != 600:
+                # st.write('đủ điều kiện ' + str(threshold))
+                break
+        if y_min != 0 and y_max != 0 and distance_bottom != 600:
+            # st.write('đủ điều kiện ' + str(threshold))
+            break
+        if y_min != 0 and y_max != 0 and distance_top != 600:
+            # st.write('đủ điều kiện ' + str(threshold))
+            break
+
+    # st.image(rotated_image, caption='Hình ảnh với hình xoay', use_column_width=True)
+    if(y_max == 0 and y_min ==0):
+        y_min = 0
+        y_max = rotated_image.shape[0]
+    if y_max == 0:
+        y_max = rotated_image.shape[0]
 
     if(distance_top != 600):
-        crop_image = rotated_image[np.abs(y_min - 20):y_max + 15, :]
-        src = crop_image.copy()
+        # print(y_min, y_max)
+        cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+        # src = rotated_image.copy()
+        src = cropped_image.copy()
         srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+        # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
         dstTri = np.array( [[-distance_top, 0], [src.shape[1], 0 ], [0 , src.shape[0]]] ).astype(np.float32)
         warp_mat = cv2.getAffineTransform(srcTri, dstTri)
         warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
 
     if(distance_bottom != 600):
-        crop_image = rotated_image[np.abs(y_min - 20):y_max + 15, :]
-        src = crop_image.copy()
+        # print(y_min, y_max)
+        cropped_image = rotated_image[np.abs(y_min - 15):y_max + 15, :]
+        # src = rotated_image.copy()
+        src = cropped_image.copy()
         srcTri = np.array( [[0, 0], [src.shape[1], 0], [0, src.shape[0]]] ).astype(np.float32)
+        # dstTri = np.array( [[0, src.shape[1]]*0, [src.shape[1]-1, src.shape[0]*0], [src.shape[1]*0, src.shape[0]*0.7]] ).astype(np.float32)
         dstTri = np.array( [[0, 0], [src.shape[1], 0 ], [-distance_bottom , src.shape[0]]] ).astype(np.float32)
         warp_mat = cv2.getAffineTransform(srcTri, dstTri)
         warp_dst = cv2.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
@@ -1321,35 +1561,45 @@ def RunDemo(yolo, cnn, image, version = 2):
     if (distance_top == 600 and distance_bottom == 600):
         gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,200,apertureSize=3)
-        lines = cv2.HoughLinesP(
-                            edges, # Input edge image
-                            1, # Distance resolution in pixels
-                            # np.pi/180, # Angle resolution in radians
-                            np.pi/120, # Angle resolution in radians
-                            # threshold=100, # Min number of votes for valid line
-                            threshold=120, # Min number of votes for valid line
-                            minLineLength=250, # Min allowed length of line
-                            maxLineGap= 300 # Max allowed gap between line for joining them
+        thresholds = [135, 100, 80, 150, 50]
+        for threshold in thresholds:
+            lines = cv2.HoughLinesP(
+                            edges, 
+                            1, 
+                            # np.pi/180, 
+                            np.pi/120, 
+                            threshold=threshold,
+                            minLineLength=200, 
+                            maxLineGap=100
                             )
-        distance_top = 0
-        distance_bottom = 0
-        x_min, y_min, x_max, y_max = 0, 0, 0,0
-        deg = 0
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            if are_lines_parallel(angle_deg) and y1 < int(rotated_image.shape[0]/2):
-                # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                y_min = y1
-            if are_lines_parallel(angle_deg) and y1 > int(rotated_image.shape[0]/2):
-                # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                y_max = y1
-            if are_lines_perpendicular(angle_deg) and x1 < int(rotated_image.shape[1]/2):
+            x_min, x_max = 0, rotated_image.shape[1]
+            flag_left, flag_right = False, False
+            deg = 0
+            # height_tmp = int(image.shape[1])
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
                 # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                x_min = x1
-            if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
-                # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                x_max = x1
+                angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                angle_deg = np.degrees(angle_rad)
+
+
+                # if are_lines_parallel(angle_deg) and y1 < int(rotated_image.shape[0]/2):
+                #     # cv2.line(rotated_image, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                #     y_min = y1
+                # if are_lines_parallel(angle_deg) and y1 > int(rotated_image.shape[0]/2):
+                #     # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 255), 2)
+                #     y_max = y1
+                if are_lines_perpendicular(angle_deg) and x1 < int(rotated_image.shape[1]/2):
+                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                    flag_left = True
+                    x_min = int((x1 + x2)/2)
+                if are_lines_perpendicular(angle_deg) and x1 > int(rotated_image.shape[1]/2):
+                    # cv2.line(rotated_image, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                    flag_right = True
+                    x_max = int((x1 + x2)/2)
+
+            if flag_left and flag_right:
+                    break
         final_image = rotated_image[y_min:y_max, x_min:x_max]
 
 
@@ -1359,11 +1609,8 @@ def RunDemo(yolo, cnn, image, version = 2):
         LP_HEIGHT = final_image.shape[0]
         dimensions = [LP_WIDTH/14,
                             LP_WIDTH/4,
-                            LP_HEIGHT/3,
+                            LP_HEIGHT/4,
                             LP_HEIGHT/2]
-
-        # img_gray_lp = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2GRAY)
-        st.image(img_gray_lp, caption='Gray Image.', use_column_width=True)
         # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
 
@@ -1376,6 +1623,7 @@ def RunDemo(yolo, cnn, image, version = 2):
 
         #Check largest 15 contours for license plate character respectively
         cntrs = sorted(cntrs, key=cv2.contourArea, reverse=True)[:15]
+
 
         character = []
         x_cntr_list_1 = []
@@ -1401,6 +1649,7 @@ def RunDemo(yolo, cnn, image, version = 2):
                 #extracting each character using the enclosing rectangle's coordinates.
                 char = final_image[intY:intY+intHeight, intX:intX+intWidth]
                 char = cv2.resize(char, (75, 100))
+                cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
                 img_res_1.append(char) # List that stores the character's binary image (unsorted)
 
         for cntr in cntrs :
@@ -1418,10 +1667,12 @@ def RunDemo(yolo, cnn, image, version = 2):
                 #extracting each character using the enclosing rectangle's coordinates.
                 char = final_image[intY:intY+intHeight, intX:intX+intWidth]
                 char = cv2.resize(char, (75, 100))
+                cv2.rectangle(img_binary_lp, (intX,intY), (intWidth+intX, intY+intHeight), (50,21,200), 1)
                 img_res_2.append(char) # List that stores the character's binary image (unsorted)
     
         #arbitrary function that stores sorted list of character indeces
         indices = sorted(range(len(x_cntr_list_1)), key=lambda k: x_cntr_list_1[k])
+        # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
         img_res_copy = []
         for idx in indices:
             img_res_copy.append(img_res_1[idx])# stores character images according to their index
@@ -1429,6 +1680,7 @@ def RunDemo(yolo, cnn, image, version = 2):
 
         #arbitrary function that stores sorted list of character indeces
         indices = sorted(range(len(x_cntr_list_2)), key=lambda k: x_cntr_list_2[k])
+        # indices = sorted(range(len(x_cntr_list)), key=lambda k: (y_cntr_list[k], x_cntr_list[k]))
         img_res_copy = []
         for idx in indices:
             img_res_copy.append(img_res_2[idx])# stores character images according to their index
@@ -1440,6 +1692,8 @@ def RunDemo(yolo, cnn, image, version = 2):
             img_res = img_res_1
         elif (len(img_res_1) == 0 and len(img_res_2) != 0):
             img_res = img_res_2
+        else:
+            img_res = []
         for i in range(len(img_res)):
 
             # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
@@ -1458,37 +1712,106 @@ def RunDemo(yolo, cnn, image, version = 2):
 
         char_array = [str(item) for item in character]
         result_string = ''.join(char_array[:])
+        list_result = []
+        list_result.append(result_string)
+        # if len(result_string) == 0:
+        #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+        #     st.markdown(s, unsafe_allow_html=True) 
+        if len(result_string) >= 0 and len(result_string) < 9:
+            try:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
+                if len(result_string) >=0 and len(result_string) < 9:
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
+                    else:
+                        pass
+                else:
+                    pass
+            except:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
+
+        elif len(result_string) == 9:
+            pass
+        else:
+            try:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
+                if len(result_string) >=0 and len(result_string) < 9:
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
+                    if len(result_string) >=0 and len(result_string) < 9:
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
+                    else:
+                        pass
+                else:
+                    pass
+            except:
+                img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
     else:
         gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,200,apertureSize=3)
-        lines = cv2.HoughLinesP(
-                    edges, # Input edge image
-                    1, # Distance resolution in pixels
-                    # np.pi/180, # Angle resolution in radians
-                    np.pi/120, # Angle resolution in radians
-                    # threshold=100, # Min number of votes for valid line
-                    threshold=100, # Min number of votes for valid line
-                    minLineLength=100, # Min allowed length of line
-                    maxLineGap= 200 # Max allowed gap between line for joining them
-                    )
-        x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle_rad = np.arctan2(y2 - y1, x2 - x1)
-            angle_deg = np.degrees(angle_rad)
-            if are_lines_perpendicular(angle_deg, threshold=4) and x1 < int(warp_dst.shape[1]/2) and x1 > 20 and x2 > 20:
-                # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
-                if x_min != 0 and x1 < x_min:
-                    x_min = x1
-                elif x_min == 0:
-                    x_min = x1
-            if are_lines_perpendicular(angle_deg, threshold=4) and x1 > int(warp_dst.shape[1]/2) and x1 < warp_dst.shape[1]-20 and x2 < warp_dst.shape[1]-20:
-                # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
-                if x_max != warp_dst.shape[1] and x1 > x_max:
-                    x_max = x1
-                elif x_max == warp_dst.shape[1]:
-                    x_max = x1
+        thresholds = [135, 100, 80, 150, 50]
+        rhos = [1,2]
+        for rho in rhos:
+            for threshold in thresholds:
+                lines = cv2.HoughLinesP(
+                                edges, 
+                                rho, 
+                                # np.pi/180, 
+                                np.pi/120, 
+                                threshold=threshold,
+                                minLineLength=200, 
+                                maxLineGap= 40
+                                )
+                x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
+                flag_left, flag_right = False, False
+                try:
+                    for line in lines:
+                        x1, y1, x2, y2 = line[0]
+                        # cv2.line(warp_dst, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                        angle_rad = np.arctan2(y2 - y1, x2 - x1)
+                        angle_deg = np.degrees(angle_rad)
+                        if are_lines_perpendicular(angle_deg, threshold=8) and x1 < int(warp_dst.shape[1]/2) - int(warp_dst.shape[1]/4) and x1 > 10 and x2 > 10:
+                            flag_left = True
+                            # cv2.line(warp_dst, (x1, y1), (x2, y2), (0, 255, 125), 2)
+                            if x_min != 0 and x1 < x_min:
+                                x_min = int((x1 + x2)/2) - 10
+                            elif x_min == 0:
+                                x_min = int((x1 + x2)/2) - 10
+                        if are_lines_perpendicular(angle_deg, threshold=6) and x1 > int(warp_dst.shape[1]/2) + int(warp_dst.shape[1]/4) and x1 < warp_dst.shape[1]-10 and x2 < warp_dst.shape[1]-10:
+                            flag_right = True
+                            # cv2.line(warp_dst, (x1, y1), (x2, y2), (125, 255, 0), 2)
+                            if x_max != warp_dst.shape[1] and x1 > x_max:
+                                x_max = int((x1 + x2)/2)
+                            elif x_max == warp_dst.shape[1]:
+                                x_max = int((x1 + x2)/2)
+                except:
+                    pass
+
+                if flag_left and flag_right:
+                    break
+            if flag_left and flag_right:
+                break
+        # st.image(warp_dst, caption='Hình ảnh warp_dst', use_column_width=True)
         final_image = warp_dst[:, x_min:x_max]
+        # st.image(cropped_image, caption='Hình ảnh crop cuối', use_column_width=True)
 
 
         img_gray_lp = cv2.cvtColor(final_image, cv2.COLOR_BGR2GRAY)
@@ -1499,13 +1822,14 @@ def RunDemo(yolo, cnn, image, version = 2):
         #estimations of character contours sizes of cropped license plates
         dimensions = [LP_WIDTH/14,
                             LP_WIDTH/4,
-                            LP_HEIGHT/3,
+                            LP_HEIGHT/4,
                             LP_HEIGHT/2]
 
+        # _, img_binary_lp = cv2.threshold(img_gray_lp, 2, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         _, img_binary_lp = cv2.threshold(img_gray_lp, 170, 255, cv2.THRESH_BINARY)
-        # _, img_binary_lp = cv2.threshold(img_gray_lp, 150, 255, cv2.THRESH_BINARY)
 
         cntrs, _ = cv2.findContours(img_binary_lp.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # print(cntrs)
         #Approx dimensions of the contours
         lower_width = dimensions[0]
         upper_width = dimensions[1]
@@ -1550,6 +1874,8 @@ def RunDemo(yolo, cnn, image, version = 2):
             intY-=5
             intWidth = int(intWidth*1.2)
             intHeight = int(intHeight*1.1)
+            if intX < 0:
+                intX = 1
             if intWidth > lower_width and intWidth < upper_width and intHeight > lower_height and intHeight < upper_height and intY > LP_HEIGHT/3 and intX>0 and intY > 0:
                 # print(intX, intY, intWidth, intHeight)
                 rotate_locations.append([intX, intY])
@@ -1576,13 +1902,15 @@ def RunDemo(yolo, cnn, image, version = 2):
         for idx in indices:
             img_res_copy.append(img_res_2[idx])# stores character images according to their index
         img_res_2 = np.array(img_res_copy)
-
+        
         if(len(img_res_1) != 0 and len(img_res_2) != 0):
             img_res = np.concatenate((img_res_1, img_res_2), axis=0)
         elif (len(img_res_1) != 0 and len(img_res_2) == 0):
             img_res = img_res_1
         elif (len(img_res_1) == 0 and len(img_res_2) != 0):
             img_res = img_res_2
+        else:
+            img_res = []
         for i in range(len(img_res)):
 
             # Chuyển đổi độ sâu của hình ảnh sang định dạng 8-bit unsigned integer
@@ -1591,6 +1919,7 @@ def RunDemo(yolo, cnn, image, version = 2):
             resized_finalimage = cv2.resize(normalized_image, (75, 100))
 
             resized_finalimage = np.expand_dims(resized_finalimage, axis=0)
+
             predicts = cnn.predict(resized_finalimage)
             predicted_class = np.argmax(predicts, axis=1)
             print(predicted_class[0])
@@ -1602,41 +1931,61 @@ def RunDemo(yolo, cnn, image, version = 2):
 
         char_array = [str(item) for item in character]
         result_string = ''.join(char_array[:])
-
-        if len(result_string) == 0:
-            s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
-            st.markdown(s, unsafe_allow_html=True) 
-        elif len(result_string) > 0 and len(result_string) < 9:
+        list_result = []
+        list_result.append(result_string)
+        # if len(result_string) == 0:
+        #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+        #     st.markdown(s, unsafe_allow_html=True) 
+        if len(result_string) >= 0 and len(result_string) < 9:
             try:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
                 if len(result_string) >=0 and len(result_string) < 9:
-                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
                     else:
                         pass
                 else:
                     pass
             except:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
 
         elif len(result_string) == 9:
             pass
         else:
             try:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 150)
+                list_result.append(result_string)
                 if len(result_string) >=0 and len(result_string) < 9:
-                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                    img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 180)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                        img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                        list_result.append(result_string)
+                        if len(result_string) >=0 and len(result_string) < 9:
+                            img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 130)
+                            list_result.append(result_string)
+                        else:
+                            pass
                     else:
                         pass
                 else:
                     pass
             except:
                 img_binary_lp, result_string = Rerun(final_image, cnn, threshold = 190)
+                list_result.append(result_string)
 
-    return result_string, xywhcc
+    longest_string = max(list_result, key=len)
+    return longest_string, xywhcc
 
 def RunPredictionV8(yolo, img):
     args = Args()
@@ -1704,8 +2053,8 @@ def RunPrediction(yolo, image, version = 2):
         xywhcp = decode(prediction[2][0],prediction[1][0],prediction[0][0] , class_num=num_classes, threshold=0.5, version=2)
 
     if len(xywhcp) > 0 and version == 2:
-        # xywhcp = nms(xywhcp, num_classes, 0.7)
-        xywhcp = soft_nms(xywhcp, num_classes, 0.5, version=version)
+        xywhcp = nms(xywhcp, num_classes, 0.7)
+        # xywhcp = soft_nms(xywhcp, num_classes, 0.5, version=version)
     elif len(xywhcp) > 0 and version == 3:
         xywhcp = soft_nms(xywhcp, num_classes, 0.5, version=version)
     elif len(xywhcp) > 0 and version == 4:
@@ -1731,13 +2080,16 @@ with st.form("select_anchors"):
 
 if start:
     count = 0
+    count_4_character = 0
     count_p = 0
+    score_iou = 0.0
+    score_giou = 0.0
+    score_diou = 0.0
     conf = 0.0
     mAP = 0.0
     with open(path_test + '\\label.txt', 'r') as file:
         total = len(file.readlines())
     if(select_model == 'Yolov2'):
-        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1753,21 +2105,26 @@ if start:
                 with open(path_test + '\\label.txt', 'r') as file:
                     for line in file:
                         data = line.strip().split()
-                        name, plate = data[0], data[1]
+                        name, plate_small, plate  = data[0], data[1], data[2]
                         if name == item:
-                            xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                            xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou = iou(xywh_true, xywh_pred)
-                            if score_iou > 0:
-                                list_iou.append(score_iou)
+                            score_iou += iou(xywh_true, xywh_pred)
+                            score_giou += giou(xywh_true, xywh_pred)
+                            score_diou += diou(xywh_true, xywh_pred)
                         if name == item and plate_number == plate:
                             count+=1
+                        if name == item and plate_number[:4] == plate_small:
+                            count_4_character+=1
             except:
                 pass
+        end_time = time.time()
 
         list_recall = []
         list_precision = []
+        list_iou_all = []
         list_iou = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        # list_iou = [0.5]
         for i in range(len(list_iou)):
             TP, FP, FN = 0,0,0
             for item in contents:
@@ -1779,11 +2136,14 @@ if start:
                     with open(path_test + '\\label.txt', 'r') as file:
                         for line in file:
                             data = line.strip().split()
-                            name, plate = data[0], data[1]
+                            name, plate_small, plate  = data[0], data[1], data[2]
                             if name == item:
-                                xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                                print(name)
+                                xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                                 xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
                                 _iou = iou(xywh_true, xywh_pred)
+                                if _iou > 0:
+                                    list_iou_all.append(_iou)
                                 if _iou >= list_iou[i]:
                                     TP += 1
                                 # elif _iou < list_iou[i] and _iou >= list_iou[i] - 0.5:
@@ -1809,18 +2169,36 @@ if start:
 
         AP = 0.0
         list_recall = sorted(list_recall)
+        print(list_iou_all)
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
+        AP = np.sum(np_list_precision)
+        AP = round(AP / len(list_recall), 2)  
+        # if all_zero_or_one:
+        #     AP = np.sum(np_list_precision)
+        #     AP = round(AP / len(list_recall), 2)  
+        # else:
+        #     if is_all_ones:
+        #         AP = np.sum(np_list_precision)
+        #     elif is_all_zero:
+        #         AP = 0.0
+        #     else:
+        #         for i in range(1, len(list_recall)):
+        #             AP += (np.abs(np_list_recall[i] - np_list_recall[i - 1]))*np_list_precision[i]
+        #     try:
+        #         if is_all_ones or is_all_zero:
+        #             AP = round(AP / len(list_recall), 2)    
+        #         else:
+        #             AP = round(AP, 2)
+        #     except:
+        #         pass
 
-        AP = round(np.average(np_list_precision), 2)
-
-        end_time = time.time()
+        
         interval = end_time - start_time
         hours = int(interval // 3600)
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
     if(select_model == 'Yolov3'):
-        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1836,21 +2214,26 @@ if start:
                 with open(path_test + '\\label.txt', 'r') as file:
                     for line in file:
                         data = line.strip().split()
-                        name, plate = data[0], data[1]
+                        name, plate_small, plate  = data[0], data[1], data[2]
                         if name == item:
-                            xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                            xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou = iou(xywh_true, xywh_pred)
-                            if score_iou > 0:
-                                list_iou.append(score_iou)
+                            score_iou += iou(xywh_true, xywh_pred)
+                            score_giou += giou(xywh_true, xywh_pred)
+                            score_diou += diou(xywh_true, xywh_pred)
                         if name == item and plate_number == plate:
                             count+=1
+                        if name == item and plate_number[:4] == plate_small:
+                            count_4_character+=1
             except:
                 pass
-
+        end_time = time.time()
+        
+        list_iou_all = []
         list_recall = []
         list_precision = []
         list_iou = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        # list_iou = [0.5]
         for i in range(len(list_iou)):
             TP, FP, FN = 0,0,0
             for item in contents:
@@ -1862,11 +2245,13 @@ if start:
                     with open(path_test + '\\label.txt', 'r') as file:
                         for line in file:
                             data = line.strip().split()
-                            name, plate = data[0], data[1]
+                            name, plate_small, plate  = data[0], data[1], data[2]
                             if name == item:
-                                xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                                xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                                 xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
                                 _iou = iou(xywh_true, xywh_pred)
+                                if _iou > 0:
+                                    list_iou_all.append(_iou)
                                 if _iou >= list_iou[i]:
                                     TP += 1
                                 # elif _iou < list_iou[i] and _iou >= list_iou[i] - 0.5:
@@ -1894,15 +2279,14 @@ if start:
         list_recall = sorted(list_recall)
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
-        AP = round(np.average(np_list_precision), 2)
+        AP = np.sum(np_list_precision)
+        AP = round(AP / len(list_recall), 2)  
 
-        end_time = time.time()
         interval = end_time - start_time
         hours = int(interval // 3600)
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
     if(select_model == 'Yolov4'):
-        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -1918,22 +2302,27 @@ if start:
                 with open(path_test + '\\label.txt', 'r') as file:
                     for line in file:
                         data = line.strip().split()
-                        name, plate = data[0], data[1]
+                        name, plate_small, plate  = data[0], data[1], data[2]
                         if name == item:
-                            xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                            xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou = iou(xywh_true, xywh_pred)
-                            if score_iou > 0:
-                                list_iou.append(score_iou)
+                            score_iou += iou(xywh_true, xywh_pred)
+                            score_giou += giou(xywh_true, xywh_pred)
+                            score_diou += diou(xywh_true, xywh_pred)
                         if name == item and plate_number == plate:
-                            print(name)
                             count+=1
+                        if name == item and plate_number[:4] == plate_small:
+                            count_4_character+=1
             except: 
                 pass
 
+        end_time = time.time()
+
         list_recall = []
         list_precision = []
+        list_iou_all = []
         list_iou = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        # list_iou = [0.5]
         for i in range(len(list_iou)):
             TP, FP, FN = 0,0,0
             for item in contents:
@@ -1945,11 +2334,13 @@ if start:
                     with open(path_test + '\\label.txt', 'r') as file:
                         for line in file:
                             data = line.strip().split()
-                            name, plate = data[0], data[1]
+                            name, plate_small, plate  = data[0], data[1], data[2]
                             if name == item:
-                                xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                                xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                                 xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
                                 _iou = iou(xywh_true, xywh_pred)
+                                if _iou > 0:
+                                    list_iou_all.append(_iou)
                                 if _iou >= list_iou[i]:
                                     TP += 1
                                 # elif _iou < list_iou[i] and _iou >= list_iou[i] - 0.5:
@@ -1977,16 +2368,15 @@ if start:
         list_recall = sorted(list_recall)
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
+        AP = np.sum(np_list_precision)
+        AP = round(AP / len(list_recall), 2)  
 
-        AP = round(np.average(np_list_precision))
-        end_time = time.time()
         interval = end_time - start_time
         hours = int(interval // 3600)
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
 
     if(select_model == 'Yolov8'):
-        list_iou = []
         contents = [file for file in os.listdir(path_test) if file.endswith(".jpg")]
         start_time = time.time()
         for item in contents:
@@ -2002,22 +2392,25 @@ if start:
                 with open(path_test + '\\label.txt', 'r') as file:
                     for line in file:
                         data = line.strip().split()
-                        name, plate = data[0], data[1]
+                        name, plate_small, plate  = data[0], data[1], data[2]
                         if name == item:
-                            xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                            xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                             xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
-                            score_iou = iou(xywh_true, xywh_pred)
-                            if score_iou > 0:
-                                list_iou.append(score_iou)
+                            score_iou += iou(xywh_true, xywh_pred)
+                            score_giou += giou(xywh_true, xywh_pred)
+                            score_diou += diou(xywh_true, xywh_pred)
                         if name == item and plate_number == plate:
-                            print(name)
                             count+=1
+                        if name == item and plate_number[:4] == plate_small:
+                            count_4_character+=1
             except: 
                 pass
-
+        end_time = time.time()
+        list_iou_all = []
         list_recall = []
         list_precision = []
         list_iou = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        # list_iou = [0.5]
         for i in range(len(list_iou)):
             TP, FP, FN = 0,0,0
             for item in contents:
@@ -2029,11 +2422,13 @@ if start:
                     with open(path_test + '\\label.txt', 'r') as file:
                         for line in file:
                             data = line.strip().split()
-                            name, plate = data[0], data[1]
+                            name, plate_small, plate  = data[0], data[1], data[2]
                             if name == item:
-                                xywh_true = [int((int(data[4]) + int(data[2]))/2), int((int(data[5]) + int(data[3]))/2), int(int(data[4]) - int(data[2])), int(int(data[5]) - int(data[3]))]
+                                xywh_true = [int((int(data[5]) + int(data[3]))/2), int((int(data[6]) + int(data[4]))/2), int(int(data[5]) - int(data[3])), int(int(data[6]) - int(data[4]))]
                                 xywh_pred = [int(xywhcc[0]), int(xywhcc[1]), int(xywhcc[2]), int(xywhcc[3])]
                                 _iou = iou(xywh_true, xywh_pred)
+                                if _iou > 0:
+                                    list_iou_all.append(_iou)
                                 if _iou >= list_iou[i]:
                                     TP += 1
                                 # elif _iou < list_iou[i] and _iou >= list_iou[i] - 0.5:
@@ -2062,18 +2457,28 @@ if start:
         np_list_precision = np.array(list_precision)
         np_list_recall = np.array(list_recall)
 
-        AP = round(np.average(list_precision), 2)
-        end_time = time.time()
+        is_all_ones = np.all(np_list_recall == 1.0)
+        is_all_zero = np.all(np_list_recall == 0.0)
+        all_zero_or_one = np.all((np_list_recall == 0.0) | (np_list_recall == 1.0))
+        AP = np.sum(np_list_precision)
+        AP = round(AP / len(list_recall), 2)  
         interval = end_time - start_time
         hours = int(interval // 3600)
         minutes = int((interval % 3600) // 60)
         seconds = int(interval % 60)
 
     result = round(count/total, 2)*100
+    result_4 = round(count_4_character/total, 2)*100
     result_p = round(count_p/total, 2)*100
-    miou = round(np.average(list_iou), 2)
+    # miou = round(score_iou / total, 2)
+    # miou = round(score_iou / count_p, 2)
+    miou = round(np.mean(list_iou_all), 2)
+    mgiou = round(score_giou / total, 2)
+    mdiou = round(score_diou / total, 2)
     conf = round(conf / total, 2) * 100
     s = f"<p style='font-size:40px;'>✅ mAP {AP}</p>"
+    st.markdown(s, unsafe_allow_html=True) 
+    s = f"<p style='font-size:40px;'>✅ Độ chính xác nhận diện 4 kí tự biển số xe trên tập Test là {result_4}%</p>"
     st.markdown(s, unsafe_allow_html=True) 
     s = f"<p style='font-size:40px;'>✅ Độ chính xác nhận diện kí tự biển số xe trên tập Test là {result}%</p>"
     st.markdown(s, unsafe_allow_html=True) 
@@ -2097,3 +2502,4 @@ if start:
     st.markdown(styled_s + style, unsafe_allow_html=True)
     s = f"<p style='font-size:40px;'>✅ mIoU: {miou}</p>"
     st.markdown(s, unsafe_allow_html=True) 
+    

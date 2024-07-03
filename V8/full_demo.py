@@ -146,10 +146,10 @@ class Args():
         self.show = False
         self.gif = False
         # Model setting
-        self.model = 'yolov8_s'
+        self.model = 'yolov8_n'
         self.num_classes = 1
-        self.weight = './Weights/yolov8_s_last_mosaic_epoch.pth'
-        self.conf_thresh = 0.05
+        self.weight = './Weights/yolov8_n_last_mosaic_epoch.pth'
+        self.conf_thresh = 0.35
         self.nms_thresh = 0.5
         self.topk = 100
         self.deploy = False
@@ -166,7 +166,7 @@ def Rerun(final_image, cnn, threshold = 170):
     LP_HEIGHT = final_image.shape[0]
 
     #estimations of character contours sizes of cropped license plates
-    dimensions = [LP_WIDTH/14,
+    dimensions = [LP_WIDTH/15,
                         LP_WIDTH/4,
                         LP_HEIGHT/4,
                         LP_HEIGHT/2]
@@ -344,7 +344,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
         cropped_image = img[y_min:y_max, x_min:x_max]
         if cropped_image.shape[0] <= 115:
             cropped_image = cv2.resize(cropped_image, (115, 100), interpolation = cv2.INTER_AREA)
-            st.image(cropped_image, caption="Hình ảnh sau khi resize về kích thước 115x100", use_column_width=True)
+            # st.image(cropped_image, caption="Hình ảnh sau khi resize về kích thước 115x100", use_column_width=True)
 
             restore_img = func_GFPGAN(input_img=cropped_image, upscale=6)
 
@@ -395,7 +395,6 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
         # st.image(image_cut, caption='Hình ảnh với hình vẽ', use_column_width=True)
         rotated_image = imutils.rotate(image_copy, angle_deg)
-        # st.image(rotated_image, caption='Hình ảnh với xoay', use_column_width=True)
 
         gray = cv2.cvtColor(rotated_image,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,200,apertureSize=3)
@@ -493,7 +492,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                         )
             distance_top = 0
             distance_bottom = 0
-            x_min, y_min, x_max, y_max = 0, 0, rotated_image.shape[1],rotated_image[0]
+            x_min, y_min, x_max, y_max = 0, 0, rotated_image.shape[1],rotated_image.shape[0]
             deg = 0
             # height_tmp = int(image.shape[1])
             for line in lines:
@@ -626,22 +625,54 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
             char_array = [str(item) for item in character]
             result_string = ''.join(char_array[:])
-            if len(result_string) == 0:
-                s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
-                st.markdown(s, unsafe_allow_html=True) 
-            elif len(result_string) > 0 and len(result_string) < 9:
+            list_result = []
+            list_result.append(result_string)
+            if len(result_string) >= 0 and len(result_string) < 9:
                 try:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    list_result.append(result_string)
                     # st.image(img_binary_lp, caption='Hình ảnh nhị phân', use_column_width=True)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
-                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
+                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 180)
+                        list_result.append(result_string)
+                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 180', use_column_width=True)
                         if len(result_string) >=0 and len(result_string) < 9:
-                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
-                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
-                            if(len(result_string) <8):
-                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
-                                st.markdown(s, unsafe_allow_html=True) 
+                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                            list_result.append(result_string)
+                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                                list_result.append(result_string)
+                                # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
+                                if(len(result_string) <8):
+                                    longest_string = max(list_result, key=len)
+                                    len_longest_string = len(longest_string)
+                                    s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
+                                    char = longest_string[2]
+                                    if ord(char) >= 65 and ord(char) <= 90:
+                                        s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                                        st.markdown(s, unsafe_allow_html=True)
+                                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                        data_array = df.values
+                                        for i in range(len(data_array)):
+                                            if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                                st.markdown(s, unsafe_allow_html=True)
+                                                break
+                                    else:
+                                        s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                                        st.markdown(s, unsafe_allow_html=True) 
+                                else:
+                                    s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
+                                    df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                    data_array = df.values
+                                    for i in range(len(data_array)):
+                                        if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                            st.markdown(s, unsafe_allow_html=True)
+                                            break
                             else:
                                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
@@ -674,6 +705,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
                 except:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
                     if(len(result_string) <8):
                         s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
                         st.markdown(s, unsafe_allow_html=True) 
@@ -690,6 +722,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
 
             elif len(result_string) == 9:
+                # st.image(img_binary_lp, caption='Hình ảnh nhị phân 170', use_column_width=True)
                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                 st.markdown(s, unsafe_allow_html=True) 
 
@@ -703,16 +736,42 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             else:
                 try:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
                         img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                        list_result.append(result_string)
                         if len(result_string) >=0 and len(result_string) < 9:
                             img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                            list_result.append(result_string)
                             if(len(result_string) <8):
-                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                                longest_string = max(list_result, key=len)
+                                len_longest_string = len(longest_string)
+                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
+                                char = longest_string[2]
+                                if ord(char) >= 65 and ord(char) <= 90:
+                                    s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                    data_array = df.values
+                                    for i in range(len(data_array)):
+                                        if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                            st.markdown(s, unsafe_allow_html=True)
+                                            break
+                                else:
+                                    s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
                             else:
                                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
+                                df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                data_array = df.values
+                                for i in range(len(data_array)):
+                                    if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                        s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                        st.markdown(s, unsafe_allow_html=True)
+                                        break 
                         else:
                             s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                             st.markdown(s, unsafe_allow_html=True) 
@@ -737,13 +796,29 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
                 except:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    list_result.append(result_string)
                     if(len(result_string) <8):
-                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                        longest_string = max(list_result, key=len)
+                        len_longest_string = len(longest_string)
+                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
                         st.markdown(s, unsafe_allow_html=True) 
+                        char = longest_string[2]
+                        if ord(char) >= 65 and ord(char) <= 90:
+                            s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                            st.markdown(s, unsafe_allow_html=True)
+                            df = pd.read_excel('./BANG_SO_XE.xlsx')
+                            data_array = df.values
+                            for i in range(len(data_array)):
+                                if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                    s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    break
+                        else:
+                            s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                            st.markdown(s, unsafe_allow_html=True) 
                     else:
                         s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                         st.markdown(s, unsafe_allow_html=True) 
-
                         df = pd.read_excel('./BANG_SO_XE.xlsx')
                         data_array = df.values
                         for i in range(len(data_array)):
@@ -752,7 +827,6 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 st.markdown(s, unsafe_allow_html=True)
                                 break
         else:
-            # st.image(warp_dst, caption='Hình ảnh với hình vẽ', use_column_width=True)
             gray = cv2.cvtColor(warp_dst,cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray,50,250,apertureSize=3)
             lines = cv2.HoughLinesP(
@@ -762,7 +836,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                         # threshold=100, # Min number of votes for valid line
                         threshold=110, # Min number of votes for valid line
                         minLineLength=300, # Min allowed length of line
-                        maxLineGap= 35 # Max allowed gap between line for joining them
+                        maxLineGap= 30 # Max allowed gap between line for joining them
                         )
             x_min, y_min, x_max, y_max = 0,0,warp_dst.shape[1],warp_dst.shape[0]
             try:
@@ -796,7 +870,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
             #estimations of character contours sizes of cropped license plates
             dimensions = [LP_WIDTH/14,
-                                LP_WIDTH/3,
+                                LP_WIDTH/4,
                                 LP_HEIGHT/3,
                                 LP_HEIGHT/2]
 
@@ -903,22 +977,57 @@ def DisplayDemo(yolo, cnn, uploaded_files):
 
             char_array = [str(item) for item in character]
             result_string = ''.join(char_array[:])
-            if len(result_string) == 0:
-                s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
-                st.markdown(s, unsafe_allow_html=True) 
-            elif len(result_string) > 0 and len(result_string) < 9:
+            list_result = []
+            list_result.append(result_string)
+            # if len(result_string) == 0:
+            #     s = f"<p style='font-size:100px; text-align: center'>🥺</p>"
+            #     st.markdown(s, unsafe_allow_html=True) 
+            if len(result_string) >= 0 and len(result_string) < 9:
                 try:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    list_result.append(result_string)
                     # st.image(img_binary_lp, caption='Hình ảnh nhị phân', use_column_width=True)
                     if len(result_string) >=0 and len(result_string) < 9:
-                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
-                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
+                        img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 180)
+                        list_result.append(result_string)
+                        # st.image(img_binary_lp, caption='Hình ảnh nhị phân 180', use_column_width=True)
                         if len(result_string) >=0 and len(result_string) < 9:
-                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
-                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
-                            if(len(result_string) <8):
-                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
-                                st.markdown(s, unsafe_allow_html=True) 
+                            img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                            list_result.append(result_string)
+                            # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
+                            if len(result_string) >=0 and len(result_string) < 9:
+                                img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                                list_result.append(result_string)
+                                # st.image(img_binary_lp, caption='Hình ảnh nhị phân 130', use_column_width=True)
+                                if(len(result_string) <8):
+                                    longest_string = max(list_result, key=len)
+                                    len_longest_string = len(longest_string)
+                                    s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
+                                    char = longest_string[2]
+                                    if ord(char) >= 65 and ord(char) <= 90:
+                                        s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                                        st.markdown(s, unsafe_allow_html=True)
+                                        df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                        data_array = df.values
+                                        for i in range(len(data_array)):
+                                            if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                                s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                                st.markdown(s, unsafe_allow_html=True)
+                                                break
+                                    else:
+                                        s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                                        st.markdown(s, unsafe_allow_html=True) 
+                                else:
+                                    s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
+                                    df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                    data_array = df.values
+                                    for i in range(len(data_array)):
+                                        if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                            st.markdown(s, unsafe_allow_html=True)
+                                            break
                             else:
                                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
@@ -951,6 +1060,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
                 except:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    # st.image(img_binary_lp, caption='Hình ảnh nhị phân 190', use_column_width=True)
                     if(len(result_string) <8):
                         s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
                         st.markdown(s, unsafe_allow_html=True) 
@@ -967,6 +1077,7 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
 
             elif len(result_string) == 9:
+                # st.image(img_binary_lp, caption='Hình ảnh nhị phân', use_column_width=True)
                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                 st.markdown(s, unsafe_allow_html=True) 
 
@@ -980,16 +1091,42 @@ def DisplayDemo(yolo, cnn, uploaded_files):
             else:
                 try:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 150)
+                    list_result.append(result_string)
                     if len(result_string) >=0 and len(result_string) < 9:
                         img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                        list_result.append(result_string)
                         if len(result_string) >=0 and len(result_string) < 9:
                             img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 130)
+                            list_result.append(result_string)
                             if(len(result_string) <8):
-                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                                longest_string = max(list_result, key=len)
+                                len_longest_string = len(longest_string)
+                                s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
+                                char = longest_string[2]
+                                if ord(char) >= 65 and ord(char) <= 90:
+                                    s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                    data_array = df.values
+                                    for i in range(len(data_array)):
+                                        if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                            s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                            st.markdown(s, unsafe_allow_html=True)
+                                            break
+                                else:
+                                    s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                                    st.markdown(s, unsafe_allow_html=True) 
                             else:
                                 s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                                 st.markdown(s, unsafe_allow_html=True) 
+                                df = pd.read_excel('./BANG_SO_XE.xlsx')
+                                data_array = df.values
+                                for i in range(len(data_array)):
+                                    if np.char.strip(data_array[i][1]) == result_string[:4]:
+                                        s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                        st.markdown(s, unsafe_allow_html=True)
+                                        break 
                         else:
                             s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                             st.markdown(s, unsafe_allow_html=True) 
@@ -1014,13 +1151,29 @@ def DisplayDemo(yolo, cnn, uploaded_files):
                                 break
                 except:
                     img_binary_lp, result_string = Rerun(cropped_image, cnn, threshold = 190)
+                    list_result.append(result_string)
                     if(len(result_string) <8):
-                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả chữ số</p>"
+                        longest_string = max(list_result, key=len)
+                        len_longest_string = len(longest_string)
+                        s = f"<p style='font-size:40px;'>Không thể nhận diện tất cả kí tự. Chỉ có thể nhận diện được {len_longest_string} kí tự trên Bảng số xe</p>"
                         st.markdown(s, unsafe_allow_html=True) 
+                        char = longest_string[2]
+                        if ord(char) >= 65 and ord(char) <= 90:
+                            s = f"<p style='font-size:50px;'>{longest_string[:2]}-{longest_string[2:4]} {longest_string[4:]}</p>"
+                            st.markdown(s, unsafe_allow_html=True)
+                            df = pd.read_excel('./BANG_SO_XE.xlsx')
+                            data_array = df.values
+                            for i in range(len(data_array)):
+                                if np.char.strip(data_array[i][1]) == longest_string[:4]:
+                                    s = f"<p style='font-size:40px;'>👉👈 {data_array[i][0]}</p>"
+                                    st.markdown(s, unsafe_allow_html=True)
+                                    break
+                        else:
+                            s = f"<p style='font-size:50px;'>{longest_string}</p>"
+                            st.markdown(s, unsafe_allow_html=True) 
                     else:
                         s = f"<p style='font-size:40px;'>🥳 {result_string[:2]}-{result_string[2:4]} {result_string[4:7]}.{result_string[7:]}</p>"
                         st.markdown(s, unsafe_allow_html=True) 
-
                         df = pd.read_excel('./BANG_SO_XE.xlsx')
                         data_array = df.values
                         for i in range(len(data_array)):

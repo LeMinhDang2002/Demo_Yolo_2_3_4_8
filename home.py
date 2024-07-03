@@ -3138,9 +3138,9 @@ class Args():
         self.show = False
         self.gif = False
         # Model setting
-        self.model = 'yolov8_s'
+        self.model = 'yolov8_n'
         self.num_classes = 1
-        self.weight = './Weights/yolov8_s_last_mosaic_epoch.pth'
+        self.weight = './Weights/yolov8_n_last_mosaic_epoch.pth'
         self.conf_thresh = 0.35
         self.nms_thresh = 0.5
         self.topk = 100
@@ -3228,6 +3228,7 @@ show_pages(
         # The pages appear in the order you pass them
         Page("V3/full_demo.py", "Full Demo With YoloV3", "📖"),
         Page("V3/detail_demo.py", "Detail Demo", "📖"),
+        # Page("V3/test_detail_demo.py", " Test Detail Demo", "📖"),
 
         Section(name="Yolo V4", icon="👀"),
         # The pages appear in the order you pass them
